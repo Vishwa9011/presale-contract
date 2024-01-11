@@ -1,0 +1,21 @@
+{
+  "name": "presale",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.ts --network testnet --verbose",
+    "verify": "hardhat verify --network testnet 0xF11B169b2D380da8209fEf301C7Eb52fc98F3eEE 0x3e86294846F495213B35FdDedDC779753f372a83 18 0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd 0xD99D1c33F9fC3444f8101754aBC46c52416550D1 0x6725F303b657a9451d8BA641348b6761A6CC7a17 0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B false false",
+    "test": "hardhat test"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.4"
+  },
+  "dependencies": {
+    "@nomiclabs/hardhat-etherscan": "^3.1.8"
+  }
+}
