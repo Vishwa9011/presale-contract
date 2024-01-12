@@ -264,11 +264,11 @@ contract Presale is Ownable, Whitelist {
     require(isInitialized == true, "Sale is not initialized");
     require(isTokenDeposited == false,"Tokens already deposited");
 
-    presaleTokens = pool.hardCap * pool.saleRate / (10 ** 18);
+    presaleTokens = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
     uint256 totalDeposit = _getTokensToDeposit();
     isTokenDeposited = true;
 
-    require(tokenInstance.transferFrom(msg.sender, address(this),totalDeposit),"Deposit Failed");
+    require(tokenInstance.transferFrom(msg.sender, address(this), totalDeposit),"Deposit Failed");
     emit Deposited(msg.sender, totalDeposit);
   }
 
@@ -283,14 +283,16 @@ contract Presale is Ownable, Whitelist {
 
     isFinished = true;
     // getting used amount of tokens
-    uint256 tokensForSale = ethRaised * pool.saleRate / (10 ** 18);
+    uint256 tokensForSale = ethRaised * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
     uint256 tokensForLiquidity = ethRaised * pool.listingRate * pool.liquidityPercent / 100;
-    tokensForLiquidity = tokensForLiquidity - (tokensForLiquidity * FEE / 100) / (10 ** 18);
+    tokensForLiquidity =tokensForLiquidity / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    tokensForLiquidity = tokensForLiquidity - (tokensForLiquidity * FEE / 100);
 
     // transfer tokens to liquidity
     uint256 liquidityETH =  _getLiquidityETH();
-    UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH,owner(), block.timestamp + (pool.lockPeriod * 1 minutes));
+    UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, owner(), block.timestamp + (pool.lockPeriod * 1 minutes));
     emit Liquified(address(this), address(UniswapV2Router02),liquidityETH);
+    
     // transfer fees(eth) to team 
     uint256 fees = _getTeamFee();
     payable(teamWallet).transfer(fees);
@@ -408,16 +410,16 @@ contract Presale is Ownable, Whitelist {
   /*
     * @dev function to buy tokens
   */
-  function buyTokens(address _contributor) public payable onlyActive(){
+  function buyTokens() public payable onlyActive(){
     require(isTokenDeposited,"Tokens not deposited");
 
     uint256 _amount = msg.value;
-    _checkSaleRequirements(_contributor, _amount);
-    uint256 tokensAmount = _amount * pool.saleRate;
+    _checkSaleRequirements(msg.sender, _amount);
+    uint256 tokensAmount = _getUserTokens(msg.sender);
     ethRaised += _amount;
     presaleTokens -= tokensAmount;
-    contributorBalance[_contributor] += _amount;
-    emit Bought(_contributor, _amount);
+    contributorBalance[msg.sender] += _amount;
+    emit Bought(msg.sender, _amount);
   }
 
 
@@ -438,12 +440,6 @@ contract Presale is Ownable, Whitelist {
     * @dev internal function
   */
 
-  // adjust decimals;
-  function _adjustDecimals(uint256 _amount) internal pure returns(uint256) {
-    uint256 adjustedAmount = _amount / (10 ** 18);
-    return adjustedAmount;
-  }
-
   // get team fees
   function _getTeamFee() internal view returns(uint256) {
      return (ethRaised * FEE / 100);
@@ -463,7 +459,7 @@ contract Presale is Ownable, Whitelist {
   }
 
   function _getUserTokens(address _contributor) internal view returns(uint256) {
-    uint256 tokens = contributorBalance[_contributor] * pool.saleRate;
+    uint256 tokens = contributorBalance[_contributor] * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
     return tokens;
   }
 
@@ -471,12 +467,12 @@ contract Presale is Ownable, Whitelist {
   function _getLiquidityTokensToDeposit() internal view returns(uint256) {
     uint256 tokens = pool.hardCap * pool.liquidityPercent * pool.listingRate / 100;
     tokens = tokens - (tokens * FEE / 100);
-    return tokens / (10 ** 18);
+    return tokens / (10 ** 18) / (10 ** (18 - tokenDecimals));
   }
 
   // function to get how many tokens he needs to deposit;
   function _getTokensToDeposit() internal view returns(uint256) {
-    uint256 tokensForSale = pool.hardCap * pool.saleRate / (10 ** 18);
+    uint256 tokensForSale = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
     uint256 tokensForLiquidity = _getLiquidityTokensToDeposit();
     return tokensForSale + tokensForLiquidity;
   }

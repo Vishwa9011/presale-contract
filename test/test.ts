@@ -1,7 +1,9 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import { initSaleData } from "./data";
+import { tokensToDeposit } from "./utils";
 
-function toWei(value: number) {
+function toWei(value: number): bigint {
   return ethers.parseEther(value.toString());
 }
 
@@ -9,6 +11,8 @@ describe("Presale contract", function () {
   let token: any;
   let presale: any;
   let tokenAddress: string;
+
+  const presaleData = initSaleData[0]
 
   it("Should deploy Token contract", async function () {
     const [creator] = await ethers.getSigners();
@@ -39,14 +43,14 @@ describe("Presale contract", function () {
     expect(token).to.not.be.undefined;
     expect(presale).to.not.be.undefined;
     const [creator] = await ethers.getSigners();
-    const approve = await token.connect(creator).approve(presale.target, toWei(100000));
+    const approve = await token.connect(creator).approve(presale.target, toWei(1000));
     await approve.wait();
   });
 
   it("Should initialize the sale", async function () {
     const [creator] = await ethers.getSigners();
     const timestampNow = Math.floor(Date.now() / 1000);
-    const initSale = await presale.connect(creator).initSale(timestampNow + 35, timestampNow + 450, 1000, 800, toWei(3), toWei(10), toWei(1), toWei(2), 51, 10);
+    const initSale = await presale.connect(creator).initSale(timestampNow + 35, timestampNow + 450, toWei(presaleData.saleRate), toWei(presaleData.listingRate), toWei(presaleData.softCap), toWei(presaleData.hardCap), toWei(presaleData.minBuy), toWei(presaleData.maxBuy), presaleData.liquidityPercent, 10);
     await initSale.wait();
   });
 
@@ -54,10 +58,11 @@ describe("Presale contract", function () {
     const [creator] = await ethers.getSigners();
     const deposit = await presale.connect(creator).deposit();
     await deposit.wait();
-    expect(presale.target).to.not.be.undefined;
+
+    const balance = await token.balanceOf(presale.target);
+    const depositTokens = tokensToDeposit(presaleData);
+    expect(balance).to.equal(toWei(depositTokens))
   });
-
-
 
 
 });

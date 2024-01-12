@@ -40,3 +40,21 @@ maxBuy = 5 ETH (in Wei)
 liquidityPercent = 60
 
 lockPeriod = 180 days in seconds (180 \_ 24 \_ 60 \* 60)
+
+uint64 \_startTime,
+uint64 \_endTime,
+uint8 \_liquidityPortion,
+uint256 \_saleRate,
+uint256 \_listingRate,
+uint256 \_hardCap,
+uint256 \_softCap,
+uint256 \_maxBuy,
+uint256 \_minBuy
+
+const approvePresale = await token.connect(creator).approve(presale.address, BigInt(1000000000000\*(10\*\*18)));
+await approvePresale.wait();
+
+        const timestampNow = Math.floor(new Date().getTime()/1000);
+        const initSale = await presale.connect(creator).initSale(timestampNow + 35, timestampNow + 450, 75, BigInt(70000000000 * (10**18)), BigInt(50000000000*(10**18)), BigInt(3000000000000000), BigInt(2000000000000000), BigInt(3000000000000000), BigInt(3000000000000));
+        await initSale.wait();
+        console.log('Sale initialized');
