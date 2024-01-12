@@ -177,7 +177,7 @@ contract Presale is Ownable, Whitelist {
 
   // modifiers 
   modifier onlyActive(){
-    require(block.timestamp >= pool.startTime && block.timestamp <= pool.endTime, "Sale must be active");
+   require(block.timestamp >= pool.startTime && block.timestamp < pool.endTime, "Sale must be active");
     _;
   }
 
@@ -399,19 +399,13 @@ contract Presale is Ownable, Whitelist {
     }
   }
 
-  /*
-    * @dev function to set whitelist
-  */
-
-  function setWhitelist(bool _isWhitelist) external onlyOwner(){
-    isWhitelist = _isWhitelist;
-  }
 
   /*
     * @dev function to buy tokens
   */
   function buyTokens() public payable onlyActive(){
     require(isTokenDeposited,"Tokens not deposited");
+    require(isRefund == false,"Sale has been cancelled");
 
     uint256 _amount = msg.value;
     _checkSaleRequirements(msg.sender, _amount);
@@ -433,8 +427,6 @@ contract Presale is Ownable, Whitelist {
     require(_amount + contributorBalance[_contributor] <= pool.maxBuy,"Max buy limit exceeded.");
     require(ethRaised + _amount <= pool.hardCap,"Hardcap reached.");
   }
-
-
 
   /*
     * @dev internal function
@@ -476,5 +468,23 @@ contract Presale is Ownable, Whitelist {
     uint256 tokensForLiquidity = _getLiquidityTokensToDeposit();
     return tokensForSale + tokensForLiquidity;
   }
+  
 
+  // setter functions
+
+  function setWhitelist(bool _isWhitelist) external onlyOwner(){
+    isWhitelist = _isWhitelist;
+  }
+
+  function setPoolStartTime(uint256 _startTime) external onlyOwner() onlyInActive(){
+    require(_startTime >= block.timestamp, "Invalid start time.");
+    require(_startTime < pool.endTime, "Invalid start time.");
+    pool.startTime = _startTime;
+  }
+
+  function setPoolEndTime(uint256 _endTime) external onlyOwner() onlyInActive(){
+    require(_endTime > pool.startTime, "Invalid end time.");
+    pool.endTime = _endTime;
+  }
 }
+
