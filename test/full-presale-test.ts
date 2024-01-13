@@ -63,5 +63,9 @@ describe("Full Presale Test", function () {
     presale = presaleCont;
   })
 
-  it("should create presale", async function () { })
+
+
+  it("User Should be able to buy, claim and emergency withdraw", async function () {
+
+  })
 })

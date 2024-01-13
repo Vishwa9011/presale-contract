@@ -3,6 +3,8 @@
 pragma solidity ^0.8.18;
 
 import "./Ownable.sol";
+import "./Presale.sol";
+
 
 contract PresaleList is Ownable {
   address[] public presales;

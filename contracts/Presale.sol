@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 
 import "./Ownable.sol";
 import "./Whitelist.sol";
+import "./LpLock.sol";
 
 interface IERC20 {
     function totalSupply() external view returns (uint256);
@@ -41,6 +42,7 @@ contract Presale is Ownable, Whitelist {
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable creatorWallet; // wallet of the creator of the presale
   address public immutable weth; // weth address for uniswap
+  address public lpLock; // lp lock contract address
 
   struct Pool {
     uint256 saleRate; // 1 BNB = ? tokens -> for presale
@@ -59,6 +61,7 @@ contract Presale is Ownable, Whitelist {
   IERC20 public tokenInstance;  
   IUniswapV2Router02 public UniswapV2Router02;
   IUniswapV2Factory public UniswapV2Factory;
+
 
   mapping(address => uint256) public contributorBalance; // contributor address => eth contributed
 
@@ -131,7 +134,7 @@ contract Presale is Ownable, Whitelist {
   event Cancelled(address indexed _initiator, address indexed token, address indexed presale);
   event BurnRemainder(address indexed _initiator, uint256 _amount);
   event RefundRemainder(address indexed _initiator, uint256 _amount);
-  event Liquified(address indexed _token,address indexed _router, uint256 _amount);
+  event Liquified(address indexed _token,address indexed _router, address indexed _pair);
 
   /*
     * @dev function to deposit tokens into the contract
@@ -167,9 +170,21 @@ contract Presale is Ownable, Whitelist {
 
     // transfer tokens to liquidity
     uint256 liquidityETH =  _getLiquidityETH();
-    UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, owner(), block.timestamp);
-    emit Liquified(address(this), address(UniswapV2Router02), liquidityETH);
+    (uint amountToken, uint amountETH,) = UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, owner(), block.timestamp);
+    require(amountToken == tokensForLiquidity && amountETH == liquidityETH, "Liquidity add failed");
     
+    // lock liquidity
+    address lpToken = UniswapV2Factory.getPair(address(tokenInstance), UniswapV2Router02.WETH());
+    
+    LiquidityLock lock = new LiquidityLock(IERC20(lpToken), block.timestamp + (pool.lockPeriod * 1 minutes));
+    lpToken.approve(address(lock), lpToken.totalSupply());
+
+    // transfer liquidity tokens to lock contract
+    lpToken.transfer(address(lock), lpToken.balanceOf(address(this)));
+
+    emit Liquified(address(this), address(UniswapV2Router02), UniswapV2Factory.getPair(address(tokenInstance), weth));
+    
+
     // transfer fees(eth) to team 
     uint256 fees = _getTeamFee();
     payable(teamWallet).transfer(fees);
@@ -191,6 +206,15 @@ contract Presale is Ownable, Whitelist {
         emit RefundRemainder(msg.sender, remainTokens);
       }
     }
+  }
+
+  /*
+    * @dev function to release lp tokens
+  */
+
+  function releaseLpTokens() external onlyOwner() onlyInActive(){
+    LiquidityLock lock = LiquidityLock(lpLock);
+    lock.withdraw();
   }
 
   /*
