@@ -38,6 +38,7 @@ describe("Presale contract", function () {
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
     const teamWallet = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
+    const launchpadOwner = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
     const burnToken = false;
     const isWhitelist = false;
 
@@ -57,7 +58,7 @@ describe("Presale contract", function () {
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     presale = presaleCont;
   });
 
@@ -187,6 +188,7 @@ describe("Presale Contract with Canceled Sale and refund", function () {
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
     const teamWallet = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
+    const launchpadOwner = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
     const burnToken = false;
     const isWhitelist = false;
 
@@ -206,7 +208,7 @@ describe("Presale Contract with Canceled Sale and refund", function () {
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     presale = presaleCont;
   });
 
@@ -314,6 +316,7 @@ describe("Presale Contract with Whitelist", function () {
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
     const teamWallet = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
+    const launchpadOwner = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
     const burnToken = false;
     const isWhitelist = true;
 
@@ -333,7 +336,7 @@ describe("Presale Contract with Whitelist", function () {
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     presale = presaleCont;
   });
 

@@ -3,6 +3,9 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 
 import "./Ownable.sol";
 import "./LpLock.sol";
@@ -20,7 +23,9 @@ interface IUniswapV2Factory {
 
 
 
-contract Presale is Ownable, Whitelist {
+contract Presale is Ownable, Whitelist, ReentrancyGuard {
+  using SafeERC20 for IERC20;
+
   bool public isWhitelist;
   bool public isTokenDeposited;
   bool public isInitialized;
@@ -35,6 +40,7 @@ contract Presale is Ownable, Whitelist {
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable creatorWallet; // wallet of the creator of the presale
   address public immutable weth; // weth address for uniswap
+  address public immutable launchpadOwner; // launchpad owner address
   address public lpLock; // lp lock contract address
 
   struct Pool {
@@ -59,9 +65,10 @@ contract Presale is Ownable, Whitelist {
   mapping(address => uint256) public contributorBalance; // contributor address => eth contributed
 
   // constructor
-  constructor(IERC20 _tokenAddress,uint8 _tokenDecimals, address _weth, address _uniswapv2Router, address _uniswapv2Factory, address _teamWallet, bool _burnToken, bool _isWhitelist, Pool memory newPool) {
+  constructor(IERC20 _tokenAddress,uint8 _tokenDecimals, address _weth, address _uniswapv2Router, address _uniswapv2Factory, address _teamWallet, address _launchpadOwner, bool _burnToken, bool _isWhitelist, Pool memory newPool) {
     require(_weth != address(0), "Invalid weth address");
     require(_teamWallet != address(0), "Invalid team wallet address");
+    require(_launchpadOwner != address(0), "Invalid launchpad owner address");
     require(_uniswapv2Router != address(0), "Invalid router address");
     require(_uniswapv2Factory != address(0), "Invalid factory address");
     require(_tokenAddress != IERC20(address(0)), "Invalid token address");
@@ -86,6 +93,7 @@ contract Presale is Ownable, Whitelist {
     weth = _weth;
     burnToken = _burnToken;
     teamWallet = _teamWallet;
+    launchpadOwner = _launchpadOwner;
     isWhitelist = _isWhitelist;
     creatorWallet = msg.sender;
     tokenDecimals = _tokenDecimals;
@@ -104,6 +112,11 @@ contract Presale is Ownable, Whitelist {
   // modifiers 
   modifier onlyActive(){
    require(block.timestamp >= pool.startTime && block.timestamp < pool.endTime, "Sale must be active");
+    _;
+  }
+
+  modifier onlyOwner() override {
+    require(_msgSender() == owner() ,"Caller must be owner");
     _;
   }
 
@@ -133,7 +146,7 @@ contract Presale is Ownable, Whitelist {
     * @dev function to deposit tokens into the contract
   */
 
-  function deposit() external onlyOwner() onlyInActive(){
+  function deposit() external onlyOwner() onlyInActive() nonReentrant(){
     require(isInitialized == true, "Sale is not initialized");
     require(isTokenDeposited == false,"Tokens already deposited");
 
@@ -141,14 +154,14 @@ contract Presale is Ownable, Whitelist {
     uint256 totalDeposit = getTokensToDeposit();
     isTokenDeposited = true;
 
-    require(tokenInstance.transferFrom(msg.sender, address(this), totalDeposit),"Deposit Failed");
+    tokenInstance.safeTransferFrom(msg.sender, address(this), totalDeposit);
     emit Deposited(msg.sender, totalDeposit);
   }
 
   /*
     * @dev function to finish the sale
   */
-  function finishSale() external onlyOwner() onlyInActive(){
+  function finishSale() external onlyOwner() onlyInActive() nonReentrant(){
     require(ethRaised >= pool.softCap, "Soft cap not reached"); 
     require(block.timestamp > pool.startTime, "Can not finish before sale start"); 
     require(isRefund == false,"Refund already done");
@@ -163,17 +176,17 @@ contract Presale is Ownable, Whitelist {
 
     // transfer tokens to liquidity
     uint256 liquidityETH =  _getLiquidityETH();
-    (uint amountToken, uint amountETH,) = UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, owner(), block.timestamp);
+    (uint amountToken, uint amountETH,) = UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, address(this), block.timestamp);
     require(amountToken == tokensForLiquidity && amountETH == liquidityETH, "Liquidity add failed");
     
     // lock liquidity
     IERC20 lpToken = IERC20(UniswapV2Factory.getPair(address(tokenInstance), UniswapV2Router02.WETH()));
-    
+    uint liquidityAmount = lpToken.balanceOf(address(this));
     LiquidityLock lock = new LiquidityLock(IERC20(lpToken), block.timestamp + (pool.lockPeriod * 1 minutes));
-    lpToken.approve(address(lock), lpToken.totalSupply());
+    lpToken.approve(address(lock), liquidityAmount);
 
     // transfer liquidity tokens to lock contract
-    lpToken.transfer(address(lock), lpToken.balanceOf(address(this)));
+    lpToken.safeTransfer(address(lock), liquidityAmount);
 
     emit Liquified(address(this), address(UniswapV2Router02), UniswapV2Factory.getPair(address(tokenInstance), weth));
     
@@ -192,10 +205,10 @@ contract Presale is Ownable, Whitelist {
     if(ethRaised < pool.hardCap){
         uint256 remainTokens = getTokensToDeposit() - tokensForSale - tokensForLiquidity;
       if(burnToken){
-        require(tokenInstance.transfer(address(0), remainTokens),"Burn Failed");
+        tokenInstance.safeTransfer(address(0), remainTokens);
         emit BurnRemainder(msg.sender, remainTokens);
       }else{
-        require(tokenInstance.transfer(msg.sender, remainTokens),"Refund Failed");
+        tokenInstance.safeTransfer(msg.sender, remainTokens);
         emit RefundRemainder(msg.sender, remainTokens);
       }
     }
@@ -205,7 +218,7 @@ contract Presale is Ownable, Whitelist {
     * @dev function to release lp tokens
   */
 
-  function releaseLpTokens() external onlyOwner() onlyInActive(){
+  function releaseLpTokens() external onlyOwner() onlyInActive() nonReentrant(){
     LiquidityLock lock = LiquidityLock(lpLock);
     lock.withdraw();
   }
@@ -213,7 +226,7 @@ contract Presale is Ownable, Whitelist {
   /*
     * @dev function to cancel the sale
   */
-  function cancelSale() external onlyOwner() onlyActive(){
+  function cancelSale() external onlyOwner() onlyActive() nonReentrant(){
     require(ethRaised < pool.hardCap, "Hard cap reached");
     require(isFinished == false, "Sale is already finished");
     pool.endTime = 0;
@@ -222,7 +235,7 @@ contract Presale is Ownable, Whitelist {
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
       uint256 tokenDeposit = getTokensToDeposit();
-      require(tokenInstance.transfer(msg.sender, tokenDeposit),"Withdraw Failed");
+      tokenInstance.safeTransfer(msg.sender, tokenDeposit);
       emit Withdraw(msg.sender, tokenDeposit);
     }
     emit Cancelled(msg.sender, address(tokenInstance),address(this));
@@ -233,7 +246,7 @@ contract Presale is Ownable, Whitelist {
     * @dev function to refund
   */
 
-  function refund() external onlyInActive() onlyRefund(){
+  function refund() external onlyInActive() onlyRefund() nonReentrant(){
     uint256 refundAmount = contributorBalance[msg.sender];
     require(refundAmount > 0, "No refund available");
     if(address(this).balance > refundAmount){
@@ -250,24 +263,24 @@ contract Presale is Ownable, Whitelist {
     * @dev function to claim tokens after listing
   */
 
-  function claimTokens() external onlyInActive(){
+  function claimTokens() external onlyInActive() nonReentrant(){
     require(isFinished , "Sale is still active");
     
     uint256 tokensAmount = _getUserTokens(msg.sender);
     require(tokensAmount > 0, "No tokens to claim");
     contributorBalance[msg.sender] = 0;
-    require(tokenInstance.transfer(msg.sender, tokensAmount), "Claim Failed");
+    tokenInstance.safeTransfer(msg.sender, tokensAmount);
     emit Claimed(msg.sender, tokensAmount);
   }
 
   /*
     * @dev function to withdraw tokens or refund
   */
-  function withdrawTokens() external onlyOwner() onlyInActive() onlyRefund(){
+  function withdrawTokens() external onlyOwner() onlyInActive() onlyRefund() nonReentrant(){
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
       uint256 tokenDeposit = getTokensToDeposit();
-      require(tokenInstance.transfer(msg.sender, tokenDeposit),"Withdraw Failed");
+      tokenInstance.safeTransfer(msg.sender, tokenDeposit);
       emit Withdraw(msg.sender, tokenDeposit);
     }
   }
@@ -277,7 +290,7 @@ contract Presale is Ownable, Whitelist {
     * if user wants to cancelBuy and get refund for his amount
     * 10% fee will be deducted for emergency withdraw
   */
-  function emergencyWithdraw() external onlyActive(){
+  function emergencyWithdraw() external onlyActive() nonReentrant(){
     uint256 refundAmount = contributorBalance[msg.sender];
     require(refundAmount > 0, "No refund available");
     if(address(this).balance > refundAmount){
@@ -297,7 +310,7 @@ contract Presale is Ownable, Whitelist {
   /*
     * @dev function to buy tokens
   */
-  function buyTokens() public payable onlyActive(){
+  function buyTokens() public payable onlyActive() nonReentrant(){
     require(isTokenDeposited,"Tokens not deposited");
     require(isRefund == false,"Sale has been cancelled");
 

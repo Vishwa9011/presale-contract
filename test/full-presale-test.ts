@@ -1,5 +1,4 @@
 import { ethers } from "hardhat";
-import { ContractTransactionResponse } from 'ethers';
 import { Presale, PresaleFactory, PresaleList, Token } from "../typechain-types"
 import { getBlock, toWei, tokensToDeposit } from "./utils";
 import { initSaleData } from "./data";
@@ -37,6 +36,7 @@ describe("Full Presale Test", function () {
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
     const teamWallet = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
+    const launchpadOwner = "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B";
     const burnToken = false;
     const isWhitelist = false;
 
@@ -55,10 +55,10 @@ describe("Full Presale Test", function () {
       lockPeriod: presaleData.lockTime,
     }
 
-    const createPresaleContract = await presaleFactory.connect(creator).createPresale(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    const createPresaleContract = await presaleFactory.connect(creator).createPresale(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     const txReceipt = await ethers.provider.getTransactionReceipt(createPresaleContract.hash);
-    const events = txReceipt?.logs.map(log => presaleFactory.interface.parseLog(log as any));
-    const presaleCreatedEvent = events?.find(e => e?.name === 'PresaleCreated');
+    const events = txReceipt?.logs.map((log: any) => presaleFactory.interface.parseLog(log as any));
+    const presaleCreatedEvent = events?.find((e: any) => e?.name === 'PresaleCreated');
     const presaleCont = await ethers.getContractAt("Presale", presaleCreatedEvent?.args.presaleAddress, creator);
     presale = presaleCont;
   })
