@@ -2,82 +2,8 @@
 
 pragma solidity ^0.8.18;
 
-
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-
-    function _msgData() internal view virtual returns (bytes calldata) {
-        return msg.data;
-    }
-}
-
-abstract contract Ownable is Context {
-    address private _owner;
-
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-
-    constructor() {
-        _transferOwnership(_msgSender());
-    }
-
-    function owner() public view virtual returns (address) {
-        return _owner;
-    }
-
-    modifier onlyOwner() {
-        require(owner() == _msgSender(), "Ownable: caller is not the owner");
-        _;
-    }
-
-    function renounceOwnership() public virtual onlyOwner {
-        _transferOwnership(address(0));
-    }
-
-    function transferOwnership(address newOwner) public virtual onlyOwner {
-        // solhint-disable-next-line
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
-        _transferOwnership(newOwner);
-    }
-
-    function _transferOwnership(address newOwner) internal virtual {
-        address oldOwner = _owner;
-        _owner = newOwner;
-        emit OwnershipTransferred(oldOwner, newOwner);
-    }
-}
-
-abstract contract Whitelist is Ownable {
-  mapping(address => bool) public whitelists;
-
-  function addWhitelist(address _address) external onlyOwner() {
-    require(_address != address(0), "Invalid address");
-    require(whitelists[_address] == false, "Already whitelisted");
-
-    whitelists[_address] = true;
-  }
-
-  function addMultipleWhitelist(address[] memory _addresses) external onlyOwner() {
-    for(uint256 i = 0; i < _addresses.length; i++){
-      whitelists[_addresses[i]] = true;
-    }
-  }
-
-  function removeWhitelist(address _address) external onlyOwner() {
-    require(_address != address(0), "Invalid address");
-    require(whitelists[_address] == true, "User not whitelisted");
-
-    whitelists[_address] = false;
-  }
-
-  function removeMultipleWhitelist(address[] memory _addresses) external onlyOwner(){
-    for(uint256 i = 0; i < _addresses.length; i++){
-      whitelists[_addresses[i]] = false;
-    }
-  }
-}
+import "./Ownable.sol";
+import "./Whitelist.sol";
 
 interface IERC20 {
     function totalSupply() external view returns (uint256);
@@ -109,12 +35,12 @@ contract Presale is Ownable, Whitelist {
   bool public isRefund;
   uint256 public ethRaised; // total eth raised
   uint256 public presaleTokens; // tokens for presale
-  uint256 public tokenDecimals; // token decimals
+  uint8 public tokenDecimals; // token decimals
   uint8 constant private FEE = 5; // 5% of eth raised
   uint8 constant private EMERGENCY_WITHDRAW_FEE = 10; // 10% of contributor balance
-  address public teamWallet;  // wallet of the team (platform fees address)
-  address public creatorWallet; // wallet of the creator of the presale
-  address weth; // weth address for uniswap
+  address public immutable teamWallet;  // wallet of the team (platform fees address)
+  address public immutable creatorWallet; // wallet of the creator of the presale
+  address public immutable weth; // weth address for uniswap
 
   struct Pool {
     uint256 saleRate; // 1 BNB = ? tokens -> for presale
@@ -123,7 +49,7 @@ contract Presale is Ownable, Whitelist {
     uint256 hardCap;
     uint256 minBuy;
     uint256 maxBuy;
-    uint256 liquidityPercent;
+    uint8 liquidityPercent;
     uint256 lockPeriod; // lock period after listing
     uint256 startTime; // unix
     uint256 endTime; // unix
@@ -137,16 +63,7 @@ contract Presale is Ownable, Whitelist {
   mapping(address => uint256) public contributorBalance; // contributor address => eth contributed
 
   // constructor
-  constructor(
-    IERC20 _tokenAddress,
-    uint256 _tokenDecimals, 
-    address _weth,
-    address _uniswapv2Router,
-    address _uniswapv2Factory,
-    address _teamWallet,
-    bool _burnToken,
-    bool _isWhitelist
-  ) {
+  constructor(IERC20 _tokenAddress,uint8 _tokenDecimals, address _weth, address _uniswapv2Router, address _uniswapv2Factory, address _teamWallet, bool _burnToken, bool _isWhitelist, Pool memory newPool) {
     require(_weth != address(0), "Invalid weth address");
     require(_teamWallet != address(0), "Invalid team wallet address");
     require(_uniswapv2Router != address(0), "Invalid router address");
@@ -154,11 +71,21 @@ contract Presale is Ownable, Whitelist {
     require(_tokenAddress != IERC20(address(0)), "Invalid token address");
     require(_tokenDecimals >= 0 && _tokenDecimals <= 18, "Invalid token decimals");
 
-    isInitialized = false;
-    isFinished = false;
-    burnToken = false;
-    isRefund = false;
+    // require statements for pool
+    require(newPool.endTime > newPool.startTime, "Invalid end time.");
+    require(newPool.minBuy > 0, "Min buy must be greater than 0.");
+    require(newPool.saleRate > 0, "Sale rate must be greater than 0.");
+    require(newPool.startTime >= block.timestamp, "Invalid start time.");
+    require(newPool.listingRate > 0, "Listing rate must be greater than 0.");
+    require(newPool.maxBuy > newPool.minBuy, "Max buy must be greater than min buy.");
+    require(newPool.softCap >= newPool.hardCap / 4, "Soft cap must be at least 25% of hard cap.");
+    require(newPool.liquidityPercent > 50 && newPool.liquidityPercent <= 100, "Liquidity percent must be between 51 and 100.");
+
     ethRaised = 0;
+    isRefund = false;
+    burnToken = false;
+    isFinished = false;
+    isInitialized = true;
 
     weth = _weth;
     burnToken = _burnToken;
@@ -170,10 +97,13 @@ contract Presale is Ownable, Whitelist {
     UniswapV2Router02 = IUniswapV2Router02(_uniswapv2Router);
     UniswapV2Factory = IUniswapV2Factory(_uniswapv2Factory);
 
-    require(UniswapV2Factory.getPair(address(tokenInstance),weth) == address(0), "Pair already exists");
+    require(UniswapV2Factory.getPair(address(tokenInstance), weth) == address(0), "Pair already exists");
     tokenInstance.approve(_uniswapv2Router, tokenInstance.totalSupply());
-  }
 
+    // initialize the sale
+    pool = newPool;
+  }
+ 
 
   // modifiers 
   modifier onlyActive(){
@@ -193,68 +123,15 @@ contract Presale is Ownable, Whitelist {
 
   // events   
   event Deposited(address indexed _initiator, uint256 _amount);
-
   event Bought(address indexed _buyer, uint256 _amount);
-
   event Refunded(address indexed _refunder, uint256 _amount);
-
   event Claimed(address indexed _participent, uint256 _amount);
-
   event Withdraw(address indexed _initiator, uint256 _amount);
-
   event EmergencyWithdraw(address indexed _initiator, uint256 _amount);
-
   event Cancelled(address indexed _initiator, address indexed token, address indexed presale);
-
   event BurnRemainder(address indexed _initiator, uint256 _amount);
-
   event RefundRemainder(address indexed _initiator, uint256 _amount);
-
   event Liquified(address indexed _token,address indexed _router, uint256 _amount);
-
-  /*
-    * @dev function to initialize the sale
-  */
-
-  function initSale(
-    uint256 _startTime,
-    uint256 _endTime,
-    uint256 _saleRate,
-    uint256 _listingRate,
-    uint256 _softCap,
-    uint256 _hardCap,
-    uint256 _minBuy,
-    uint256 _maxBuy,
-    uint256 _liquidityPercent,
-    uint256 _lockPeriod 
-  ) external onlyOwner() {
-
-    require(isInitialized == false, "Sale is already initialized");
-    require(_startTime >= block.timestamp, "Invalid start time.");
-    require(_endTime > _startTime, "Invalid end time.");
-    require(_softCap >= _hardCap / 4, "Soft cap must be at least 25% of hard cap.");
-    require(_liquidityPercent > 50 && _liquidityPercent <= 100, "Liquidity percent must be between 51 and 100.");
-    require(_saleRate > 0, "Sale rate must be greater than 0.");
-    require(_listingRate > 0, "Listing rate must be greater than 0.");
-    require(_minBuy > 0, "Min buy must be greater than 0.");
-    require(_maxBuy > _minBuy, "Max buy must be greater than min buy.");
-
-    Pool memory newPool = Pool({
-      saleRate: _saleRate,
-      listingRate: _listingRate,
-      softCap: _softCap,
-      hardCap: _hardCap,
-      minBuy: _minBuy,
-      maxBuy: _maxBuy,
-      liquidityPercent: _liquidityPercent,
-      lockPeriod: _lockPeriod,
-      startTime: _startTime,
-      endTime: _endTime
-    });
-    
-    pool = newPool;
-    isInitialized = true;
-  }
 
   /*
     * @dev function to deposit tokens into the contract
@@ -265,7 +142,7 @@ contract Presale is Ownable, Whitelist {
     require(isTokenDeposited == false,"Tokens already deposited");
 
     presaleTokens = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
-    uint256 totalDeposit = _getTokensToDeposit();
+    uint256 totalDeposit = getTokensToDeposit();
     isTokenDeposited = true;
 
     require(tokenInstance.transferFrom(msg.sender, address(this), totalDeposit),"Deposit Failed");
@@ -290,8 +167,8 @@ contract Presale is Ownable, Whitelist {
 
     // transfer tokens to liquidity
     uint256 liquidityETH =  _getLiquidityETH();
-    UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, owner(), block.timestamp + (pool.lockPeriod * 1 minutes));
-    emit Liquified(address(this), address(UniswapV2Router02),liquidityETH);
+    UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, owner(), block.timestamp);
+    emit Liquified(address(this), address(UniswapV2Router02), liquidityETH);
     
     // transfer fees(eth) to team 
     uint256 fees = _getTeamFee();
@@ -305,7 +182,7 @@ contract Presale is Ownable, Whitelist {
 
     // if hardcap is not reached then burn or refund the remain tokens
     if(ethRaised < pool.hardCap){
-        uint256 remainTokens = _getTokensToDeposit() - tokensForSale - tokensForLiquidity;
+        uint256 remainTokens = getTokensToDeposit() - tokensForSale - tokensForLiquidity;
       if(burnToken){
         require(tokenInstance.transfer(address(0), remainTokens),"Burn Failed");
         emit BurnRemainder(msg.sender, remainTokens);
@@ -327,7 +204,7 @@ contract Presale is Ownable, Whitelist {
 
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
-      uint256 tokenDeposit = _getTokensToDeposit();
+      uint256 tokenDeposit = getTokensToDeposit();
       require(tokenInstance.transfer(msg.sender, tokenDeposit),"Withdraw Failed");
       emit Withdraw(msg.sender, tokenDeposit);
     }
@@ -372,7 +249,7 @@ contract Presale is Ownable, Whitelist {
   function withdrawTokens() external onlyOwner() onlyInActive() onlyRefund(){
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
-      uint256 tokenDeposit = _getTokensToDeposit();
+      uint256 tokenDeposit = getTokensToDeposit();
       require(tokenInstance.transfer(msg.sender, tokenDeposit),"Withdraw Failed");
       emit Withdraw(msg.sender, tokenDeposit);
     }
@@ -428,6 +305,13 @@ contract Presale is Ownable, Whitelist {
     require(ethRaised + _amount <= pool.hardCap,"Hardcap reached.");
   }
 
+  // function to get how many tokens he needs to deposit;
+  function getTokensToDeposit() public view returns(uint256) {
+    uint256 tokensForSale = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    uint256 tokensForLiquidity = _getLiquidityTokensToDeposit();
+    return (tokensForSale + tokensForLiquidity);
+  }
+
   /*
     * @dev internal function
   */
@@ -462,13 +346,6 @@ contract Presale is Ownable, Whitelist {
     return tokens / (10 ** 18) / (10 ** (18 - tokenDecimals));
   }
 
-  // function to get how many tokens he needs to deposit;
-  function _getTokensToDeposit() internal view returns(uint256) {
-    uint256 tokensForSale = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
-    uint256 tokensForLiquidity = _getLiquidityTokensToDeposit();
-    return tokensForSale + tokensForLiquidity;
-  }
-  
 
   // setter functions
 
@@ -485,6 +362,12 @@ contract Presale is Ownable, Whitelist {
   function setPoolEndTime(uint256 _endTime) external onlyOwner() onlyInActive(){
     require(_endTime > pool.startTime, "Invalid end time.");
     pool.endTime = _endTime;
+  }
+
+  function setPresaleTokens(uint256 _presaleTokens) external onlyOwner() onlyInActive(){
+    require(presaleTokens ==0, "Presale tokens already set.");
+    require(_presaleTokens > 0, "Invalid presale tokens.");
+    presaleTokens = _presaleTokens;
   }
 }
 

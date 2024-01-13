@@ -1,26 +1,15 @@
-import { ContractTransactionResponse } from 'ethers';
 import { expect } from "chai";
 import { ethers, network } from "hardhat";
 import { initSaleData } from "./data";
-import { getBlock, tokensToDeposit } from "./utils";
+import { getBlock, toWei, tokensToDeposit } from "./utils";
 import { Presale, Token } from '../typechain-types';
 
-function toWei(value: number): bigint {
-  return ethers.parseEther(value.toString());
-}
+type PresaleContract = Presale
+type TokenContract = Token
 
-type PresaleContract = Presale & {
-  deploymentTransaction(): ContractTransactionResponse;
-};
-
-type TokenContract = Token & {
-  deploymentTransaction(): ContractTransactionResponse;
-}
-
-describe.skip("Presale contract", function () {
+describe("Presale contract", function () {
   let token: TokenContract;
   let presale: PresaleContract;
-  let tokenAddress: string;
 
   const presaleData = initSaleData[0];
 
@@ -32,6 +21,7 @@ describe.skip("Presale contract", function () {
     return await presale.contributorBalance(address);
   }
 
+
   it("Should deploy Token contract", async function () {
     const [creator] = await ethers.getSigners();
     expect(creator).to.not.be.undefined;
@@ -39,11 +29,11 @@ describe.skip("Presale contract", function () {
     const tokenFactory = await ethers.getContractFactory("Token");
     const tokenCon = await tokenFactory.deploy();
     await tokenCon.waitForDeployment();
-    tokenAddress = tokenCon.target as string;
     token = tokenCon;
   });
 
   it("Should deploy Presale contract", async function () {
+    const [creator] = await ethers.getSigners();
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -51,25 +41,33 @@ describe.skip("Presale contract", function () {
     const burnToken = false;
     const isWhitelist = false;
 
+    const timestampNow = (await getBlock())?.timestamp ?? 0;
+
+    const pool: Presale.PoolStruct = {
+      saleRate: toWei(presaleData.saleRate),
+      listingRate: toWei(presaleData.listingRate),
+      softCap: toWei(presaleData.softCap),
+      hardCap: toWei(presaleData.hardCap),
+      minBuy: toWei(presaleData.minBuy),
+      maxBuy: toWei(presaleData.maxBuy),
+      liquidityPercent: presaleData.liquidityPercent,
+      startTime: timestampNow + 10,
+      endTime: timestampNow + 450,
+      lockPeriod: presaleData.lockTime,
+    }
+
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCon = await presaleFactory.deploy(tokenAddress, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist);
-    await presaleCon.waitForDeployment();
-    presale = presaleCon;
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    presale = presaleCont;
   });
 
   it("Should Approve tokens for Presale contract", async function () {
     expect(token).to.not.be.undefined;
     expect(presale).to.not.be.undefined;
-    const [creator] = await ethers.getSigners();
-    const approve = await token.connect(creator).approve(presale.target, toWei(1000));
+    // approve token to presale contract
+    const tokensToDepositForPresale = tokensToDeposit(presaleData);
+    const approve = await token.approve(presale.target, toWei(tokensToDepositForPresale))
     await approve.wait();
-  });
-
-  it("Should initialize the sale", async function () {
-    const [creator] = await ethers.getSigners();
-    const timestampNow = (await getBlock())?.timestamp ?? 0;
-    const initSale = await presale.connect(creator).initSale(timestampNow + 10, timestampNow + 450, toWei(presaleData.saleRate), toWei(presaleData.listingRate), toWei(presaleData.softCap), toWei(presaleData.hardCap), toWei(presaleData.minBuy), toWei(presaleData.maxBuy), presaleData.liquidityPercent, 10);
-    await initSale.wait();
   });
 
   it("Should deposit tokens", async function () {
@@ -164,10 +162,9 @@ describe.skip("Presale contract", function () {
 
 });
 
-describe.skip("Presale Contract with Canceled Sale and refund", function () {
+describe("Presale Contract with Canceled Sale and refund", function () {
   let token: TokenContract;
   let presale: PresaleContract;
-  let tokenAddress: string;
 
   const presaleData = initSaleData[0];
   const contributorBalance = async (address: string) => {
@@ -181,11 +178,11 @@ describe.skip("Presale Contract with Canceled Sale and refund", function () {
     const tokenFactory = await ethers.getContractFactory("Token");
     const tokenCon = await tokenFactory.deploy();
     await tokenCon.waitForDeployment();
-    tokenAddress = tokenCon.target as string;
     token = tokenCon;
   });
 
   it("Should deploy Presale contract", async function () {
+    const [creator] = await ethers.getSigners();
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -193,25 +190,33 @@ describe.skip("Presale Contract with Canceled Sale and refund", function () {
     const burnToken = false;
     const isWhitelist = false;
 
+    const timestampNow = (await getBlock())?.timestamp ?? 0;
+
+    const pool: Presale.PoolStruct = {
+      saleRate: toWei(presaleData.saleRate),
+      listingRate: toWei(presaleData.listingRate),
+      softCap: toWei(presaleData.softCap),
+      hardCap: toWei(presaleData.hardCap),
+      minBuy: toWei(presaleData.minBuy),
+      maxBuy: toWei(presaleData.maxBuy),
+      liquidityPercent: presaleData.liquidityPercent,
+      startTime: timestampNow + 10,
+      endTime: timestampNow + 450,
+      lockPeriod: presaleData.lockTime,
+    }
+
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCon = await presaleFactory.deploy(tokenAddress, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist);
-    await presaleCon.waitForDeployment();
-    presale = presaleCon;
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    presale = presaleCont;
   });
 
   it("Should Approve tokens for Presale contract", async function () {
     expect(token).to.not.be.undefined;
     expect(presale).to.not.be.undefined;
-    const [creator] = await ethers.getSigners();
-    const approve = await token.connect(creator).approve(presale.target, toWei(1000));
+    // approve token to presale contract
+    const tokensToDepositForPresale = tokensToDeposit(presaleData);
+    const approve = await token.approve(presale.target, toWei(tokensToDepositForPresale))
     await approve.wait();
-  });
-
-  it("Should initialize the sale", async function () {
-    const [creator] = await ethers.getSigners();
-    const timestampNow = (await getBlock())?.timestamp ?? 0;
-    const initSale = await presale.connect(creator).initSale(timestampNow + 10, timestampNow + 450, toWei(presaleData.saleRate), toWei(presaleData.listingRate), toWei(presaleData.softCap), toWei(presaleData.hardCap), toWei(presaleData.minBuy), toWei(presaleData.maxBuy), presaleData.liquidityPercent, 10);
-    await initSale.wait();
   });
 
   it("Should deposit tokens", async function () {
@@ -286,7 +291,6 @@ describe.skip("Presale Contract with Canceled Sale and refund", function () {
 describe("Presale Contract with Whitelist", function () {
   let token: TokenContract;
   let presale: PresaleContract;
-  let tokenAddress: string;
 
   const presaleData = initSaleData[0];
 
@@ -301,11 +305,11 @@ describe("Presale Contract with Whitelist", function () {
     const tokenFactory = await ethers.getContractFactory("Token");
     const tokenCon = await tokenFactory.deploy();
     await tokenCon.waitForDeployment();
-    tokenAddress = tokenCon.target as string;
     token = tokenCon;
   });
 
   it("Should deploy Presale contract", async function () {
+    const [creator] = await ethers.getSigners();
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -313,25 +317,33 @@ describe("Presale Contract with Whitelist", function () {
     const burnToken = false;
     const isWhitelist = true;
 
+    const timestampNow = (await getBlock())?.timestamp ?? 0;
+
+    const pool: Presale.PoolStruct = {
+      saleRate: toWei(presaleData.saleRate),
+      listingRate: toWei(presaleData.listingRate),
+      softCap: toWei(presaleData.softCap),
+      hardCap: toWei(presaleData.hardCap),
+      minBuy: toWei(presaleData.minBuy),
+      maxBuy: toWei(presaleData.maxBuy),
+      liquidityPercent: presaleData.liquidityPercent,
+      startTime: timestampNow + 10,
+      endTime: timestampNow + 450,
+      lockPeriod: presaleData.lockTime,
+    }
+
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCon = await presaleFactory.deploy(tokenAddress, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist);
-    await presaleCon.waitForDeployment();
-    presale = presaleCon;
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, burnToken, isWhitelist, pool);
+    presale = presaleCont;
   });
 
   it("Should Approve tokens for Presale contract", async function () {
     expect(token).to.not.be.undefined;
     expect(presale).to.not.be.undefined;
-    const [creator] = await ethers.getSigners();
-    const approve = await token.connect(creator).approve(presale.target, toWei(1000));
+    // approve token to presale contract
+    const tokensToDepositForPresale = tokensToDeposit(presaleData);
+    const approve = await token.approve(presale.target, toWei(tokensToDepositForPresale))
     await approve.wait();
-  });
-
-  it("Should initialize the sale", async function () {
-    const [creator] = await ethers.getSigners();
-    const timestampNow = (await getBlock())?.timestamp ?? 0;
-    const initSale = await presale.connect(creator).initSale(timestampNow + 10, timestampNow + 450, toWei(presaleData.saleRate), toWei(presaleData.listingRate), toWei(presaleData.softCap), toWei(presaleData.hardCap), toWei(presaleData.minBuy), toWei(presaleData.maxBuy), presaleData.liquidityPercent, 10);
-    await initSale.wait();
   });
 
   it("Should deposit tokens", async function () {

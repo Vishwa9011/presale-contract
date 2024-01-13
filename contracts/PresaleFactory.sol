@@ -2,30 +2,53 @@
 pragma solidity ^0.8.18;
 
 import "./Presale.sol";
+import "./Ownable.sol";
 
-interface PresaleList{
+
+interface IPresaleList {
     function addPresale(address _presale) external;
-    function removePresale(address _presale) external;
     function getPresales() external view returns (address[] memory);
 }
 
-contract PresaleFactory {
+contract PresaleFactory is Ownable {
+    address public presaleListContract;
 
-  address public presaleListContract = 0x3aEe8787aC34a8875C2d98B73C41333B6820C985;
+    constructor(address _presaleList) {
+        presaleListContract = _presaleList;
+    }
 
-  event PresaleCreated(address presaleAddress, address owner);
+    event PresaleCreated(address indexed presaleAddress, address indexed owner);
 
-  function createPresale(IERC20 _tokenAddress,uint256 _tokenDecimals, address _weth,address _uniswapv2Router,address _uniswapv2Factory,address _teamWallet,bool _burnToken,bool _isWhitelist) external returns (address){
-    Presale presale = new Presale(_tokenAddress,_tokenDecimals,_weth,_uniswapv2Router,_uniswapv2Factory,_teamWallet,_burnToken,_isWhitelist);
+    function createPresale(
+        IERC20 _tokenAddress,
+        uint8 _tokenDecimals,
+        address _weth,
+        address _uniswapv2Router,
+        address _uniswapv2Factory,
+        address _teamWallet,
+        bool _burnToken,
+        bool _isWhitelist,
+        Presale.Pool memory _pool
+    ) external onlyOwner() returns (address) {
+        Presale presale = new Presale(_tokenAddress,_tokenDecimals,_weth,_uniswapv2Router,_uniswapv2Factory,_teamWallet,_burnToken,_isWhitelist,_pool);
 
-    PresaleList presaleList = PresaleList(presaleListContract);
-    presaleList.addPresale(address(presale));
+        uint256 presaleTokenToDeposit = presale.getTokensToDeposit();
+        require(IERC20(_tokenAddress).transferFrom(msg.sender, address(presale), presaleTokenToDeposit),"Token transfer failed");
+        presale.setPresaleTokens(presaleTokenToDeposit);
 
-    emit PresaleCreated(address(presale), msg.sender);
-    return address(presale);
-  }
+        uint256 presaleContractbalance = IERC20(_tokenAddress).balanceOf(address(presale));
+        require(presaleContractbalance == presaleTokenToDeposit,"Presale contract balance is not equal to presale tokens");
 
-  function setPresaleList(address _presaleList) external {
-    presaleListContract = _presaleList;
-  }
+        IPresaleList presaleList = IPresaleList(presaleListContract);
+        presaleList.addPresale(address(presale));
+
+        presale.transferOwnership(msg.sender);
+
+        emit PresaleCreated(address(presale), msg.sender);
+        return address(presale);
+    }
+
+    function setPresaleListAddress(address _presaleList) external onlyOwner() {
+        presaleListContract = _presaleList;
+    }
 }

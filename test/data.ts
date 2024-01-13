@@ -17,6 +17,7 @@ export const initSaleData = [
     hardCap: 0.2,
     listingRate: 899,
     liquidityPercent: 51,
+    lockTime: 15
   }
 ]
 

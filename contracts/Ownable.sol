@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: UNLICENSED
-// solhint-disable-next-line
 pragma solidity ^0.8.18;
 
 abstract contract Context {

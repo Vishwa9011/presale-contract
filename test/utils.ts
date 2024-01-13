@@ -1,6 +1,10 @@
 import { ethers } from "hardhat";
 import { SaleData } from "./data"
 
+export function toWei(value: number): bigint {
+  return ethers.parseEther(value.toString());
+}
+
 export const tokensToDeposit = (data: SaleData) => {
   return Number((tokensForSale(data) + tokensForLiquidity(data)).toFixed(5));
 }
