@@ -38,7 +38,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   uint8 constant private FEE = 5; // 5% of eth raised
   uint8 constant private EMERGENCY_WITHDRAW_FEE = 10; // 10% of contributor balance
   address public immutable teamWallet;  // wallet of the team (platform fees address)
-  address public immutable creatorWallet; // wallet of the creator of the presale
   address public immutable weth; // weth address for uniswap
   address public immutable launchpadOwner; // launchpad owner address
   address public lpLock; // lp lock contract address
@@ -95,7 +94,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     teamWallet = _teamWallet;
     launchpadOwner = _launchpadOwner;
     isWhitelist = _isWhitelist;
-    creatorWallet = msg.sender;
     tokenDecimals = _tokenDecimals;
     tokenInstance = IERC20(_tokenAddress);
     UniswapV2Router02 = IUniswapV2Router02(_uniswapv2Router);
@@ -115,7 +113,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     _;
   }
 
-  modifier onlyOwner() override {
+  modifier onlyOwnerAndLaunchpadOwner() {
     require(_msgSender() == owner() ,"Caller must be owner");
     _;
   }
@@ -198,7 +196,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     // transfer eth to owner
     uint256 creatorShare = _getOwnerShare();
     if(creatorShare > 0){
-      payable(creatorWallet).transfer(creatorShare);
+      payable(owner()).transfer(creatorShare);
     }
 
     // if hardcap is not reached then burn or refund the remain tokens
@@ -226,7 +224,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to cancel the sale
   */
-  function cancelSale() external onlyOwner() onlyActive() nonReentrant(){
+  function cancelSale() external onlyOwnerAndLaunchpadOwner() onlyActive() nonReentrant(){
     require(ethRaised < pool.hardCap, "Hard cap reached");
     require(isFinished == false, "Sale is already finished");
     pool.endTime = 0;
@@ -235,12 +233,11 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
       uint256 tokenDeposit = getTokensToDeposit();
-      tokenInstance.safeTransfer(msg.sender, tokenDeposit);
-      emit Withdraw(msg.sender, tokenDeposit);
+      tokenInstance.safeTransfer(owner(), tokenDeposit);
+      emit Withdraw(owner(), tokenDeposit);
     }
     emit Cancelled(msg.sender, address(tokenInstance),address(this));
   }
-
 
   /*
     * @dev function to refund
@@ -252,8 +249,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     if(address(this).balance > refundAmount){
       if(refundAmount > 0){
         contributorBalance[msg.sender] = 0;
-        address payable refunder = payable(msg.sender);
-        refunder.transfer(refundAmount);
+        payable(msg.sender).transfer(refundAmount);
         emit Refunded(msg.sender, refundAmount);
       }
     }
@@ -262,7 +258,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to claim tokens after listing
   */
-
   function claimTokens() external onlyInActive() nonReentrant(){
     require(isFinished , "Sale is still active");
     
@@ -276,12 +271,12 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to withdraw tokens or refund
   */
-  function withdrawTokens() external onlyOwner() onlyInActive() onlyRefund() nonReentrant(){
+  function withdrawTokens() external onlyOwnerAndLaunchpadOwner() onlyInActive() onlyRefund() nonReentrant(){
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
       uint256 tokenDeposit = getTokensToDeposit();
-      tokenInstance.safeTransfer(msg.sender, tokenDeposit);
-      emit Withdraw(msg.sender, tokenDeposit);
+      tokenInstance.safeTransfer(owner(), tokenDeposit);
+      emit Withdraw(owner(), tokenDeposit);
     }
   }
 
@@ -299,13 +294,12 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
         refundAmount = refundAmount - deductedAmount;
 
         contributorBalance[msg.sender] = 0;
-        payable(creatorWallet).transfer(deductedAmount);
+        payable(owner()).transfer(deductedAmount);
         payable(msg.sender).transfer(refundAmount);
         emit Refunded(msg.sender, refundAmount);
       }
     }
   }
-
 
   /*
     * @dev function to buy tokens
@@ -322,7 +316,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     contributorBalance[msg.sender] += _amount;
     emit Bought(msg.sender, _amount);
   }
-
 
   // check sale requirements
   function _checkSaleRequirements(address _contributor,uint256 _amount) internal view {
@@ -345,7 +338,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev internal function
   */
-
   // get team fees
   function _getTeamFee() internal view returns(uint256) {
      return (ethRaised * FEE / 100);
