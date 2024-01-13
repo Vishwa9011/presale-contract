@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "./Presale.sol";
 import "./Ownable.sol";
-
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IPresaleList {
     function addPresale(address _presale) external;

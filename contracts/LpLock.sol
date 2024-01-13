@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
+
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract LiquidityLock {
@@ -8,7 +9,7 @@ contract LiquidityLock {
   address public owner;
   uint256 public unlockTime;
 
-  constructor(address _lpToken, uint256 _unlockTime) {
+  constructor(IERC20 _lpToken, uint256 _unlockTime) {
     owner = msg.sender;
     lpToken = IERC20(_lpToken);
     unlockTime = _unlockTime;

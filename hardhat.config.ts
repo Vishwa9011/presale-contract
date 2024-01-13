@@ -10,7 +10,7 @@ const PRIVATE_KEY4 = "0x8166f546bab6da521a8369cab06c5d2b9e46670292d85c875ee9ec20
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.18",
+    version: "0.8.20",
     settings: {
       optimizer: {
         enabled: true,
