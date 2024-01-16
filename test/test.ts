@@ -3,6 +3,7 @@ import { ethers, network } from "hardhat";
 import { initSaleData } from "./data";
 import { getBlock, toWei, tokensToDeposit } from "./utils";
 import { Presale, Token } from '../typechain-types';
+import { time } from "@nomicfoundation/hardhat-network-helpers"
 
 type PresaleContract = Presale
 type TokenContract = Token
@@ -34,6 +35,7 @@ describe("Presale contract", function () {
 
   it("Should deploy Presale contract", async function () {
     const [creator] = await ethers.getSigners();
+    const pinkLockAddress = "0x5E5b9bE5fd939c578ABE5800a90C566eeEbA44a5"
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -58,7 +60,7 @@ describe("Presale contract", function () {
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, pinkLockAddress, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     presale = presaleCont;
   });
 
@@ -82,9 +84,7 @@ describe("Presale contract", function () {
   });
 
   it("should wait for sale to start", async function () {
-    // await wait(15 * 1000)
-    network.provider.send("evm_increaseTime", [15])
-    network.provider.send("evm_mine")
+    time.increase(15);
   })
 
   it("Should be contritbuted by users", async function () {
@@ -96,8 +96,6 @@ describe("Presale contract", function () {
     await user2Con.wait();
     const user3Con = await presale.connect(user3).buyTokens({ value: toWei(0.05) })
     await user3Con.wait();
-    // const user4Con = await presale.connect(user4).buyTokens({ value: toWei(0.05) })
-    // await user4Con.wait();
 
     const user1Balance = await contributorBalance(user1.address);
     expect(user1Balance).to.equal(toWei(0.05));
@@ -105,16 +103,10 @@ describe("Presale contract", function () {
     expect(user2Balance).to.equal(toWei(0.05));
     const user3Balance = await contributorBalance(user3.address);
     expect(user3Balance).to.equal(toWei(0.05));
-    // const user4Balance = await contributorBalance(user4.address);
-    // expect(user4Balance).to.equal(toWei(0.05));
-
-    // const totalContribution = await presale.ethRaised();
-    // expect(totalContribution).to.equal(toWei(0.2));
   })
 
   it("Should wait for sale to end", async function () {
-    network.provider.send("evm_increaseTime", [500])
-    network.provider.send("evm_mine")
+    time.increase(500);
   })
 
   it("Should be finalized the sale", async function () {
@@ -151,6 +143,11 @@ describe("Presale contract", function () {
     // expect(user4TokenBalance).to.equal(toWei(50));
   });
 
+  it("Should be able to unlock lp token", async function () {
+    const [creator] = await ethers.getSigners();
+    await presale.connect(creator).releaseLpTokens();
+  })
+
   it.skip("Should be alble to emergency withdraw", async function () {
     const [creator, user1] = await ethers.getSigners();
     const user1Withdraw = await presale.connect(user1).emergencyWithdraw();
@@ -184,6 +181,7 @@ describe("Presale Contract with Canceled Sale and refund", function () {
 
   it("Should deploy Presale contract", async function () {
     const [creator] = await ethers.getSigners();
+    const pinkLockAddress = "0x5E5b9bE5fd939c578ABE5800a90C566eeEbA44a5"
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -208,7 +206,7 @@ describe("Presale Contract with Canceled Sale and refund", function () {
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, pinkLockAddress, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     presale = presaleCont;
   });
 
@@ -312,6 +310,7 @@ describe("Presale Contract with Whitelist", function () {
 
   it("Should deploy Presale contract", async function () {
     const [creator] = await ethers.getSigners();
+    const pinkLockAddress = "0x5E5b9bE5fd939c578ABE5800a90C566eeEbA44a5"
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -336,7 +335,7 @@ describe("Presale Contract with Whitelist", function () {
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
-    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
+    const presaleCont = await presaleFactory.connect(creator).deploy(token.target, 18, pinkLockAddress, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool);
     presale = presaleCont;
   });
 
@@ -360,8 +359,7 @@ describe("Presale Contract with Whitelist", function () {
   });
 
   it("should wait for sale to start", async function () {
-    network.provider.send("evm_increaseTime", [15])
-    network.provider.send("evm_mine")
+    time.increase(15);
   })
 
   it("Not whitelisted user should not be able to buy tokens", async function () {
@@ -412,8 +410,7 @@ describe("Presale Contract with Whitelist", function () {
   });
 
   it("Should wait for sale to end", async function () {
-    network.provider.send("evm_increaseTime", [500])
-    network.provider.send("evm_mine")
+    time.increase(500);
   })
 
   it("Should be finalized the sale", async function () {

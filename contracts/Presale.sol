@@ -8,7 +8,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 
 import "./Ownable.sol";
-import "./LpLock.sol";
 import "./Whitelist.sol";
 
 
@@ -21,6 +20,10 @@ interface IUniswapV2Factory {
     function getPair(address tokenA, address tokenB) external view returns (address pair);
 }
 
+interface IPinkLock {
+   function lock(address owner,address token,bool isLpToken,uint256 amount,uint256 unlockDate,string memory description) external returns (uint256 lockId);
+   function unlock(uint256 lockId) external;
+}
 
 
 contract Presale is Ownable, Whitelist, ReentrancyGuard {
@@ -41,7 +44,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable weth; // weth address for uniswap
   address public immutable launchpadOwner; // launchpad owner address
-  address public lpLock; // lp lock contract address
+  uint public pinkLockId;
 
   struct Pool {
     uint256 saleRate; // 1 BNB = ? tokens -> for presale
@@ -57,6 +60,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   Pool public pool;
+  IPinkLock public pinkLock; // lp token address
   IERC20 public tokenInstance;  
   IUniswapV2Router02 public UniswapV2Router02;
   IUniswapV2Factory public UniswapV2Factory;
@@ -65,7 +69,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   mapping(address => uint256) public contributorBalance; // contributor address => eth contributed
 
   // constructor
-  constructor(IERC20 _tokenAddress,uint8 _tokenDecimals, address _weth, address _uniswapv2Router, address _uniswapv2Factory, address _teamWallet, address _launchpadOwner, bool _burnToken, bool _isWhitelist, Pool memory newPool) {
+  constructor(IERC20 _tokenAddress, uint8 _tokenDecimals,address _pinkLock, address _weth, address _uniswapv2Router, address _uniswapv2Factory, address _teamWallet, address _launchpadOwner, bool _burnToken, bool _isWhitelist, Pool memory newPool) {
     require(_weth != address(0), "Invalid weth address");
     require(_teamWallet != address(0), "Invalid team wallet address");
     require(_launchpadOwner != address(0), "Invalid launchpad owner address");
@@ -96,6 +100,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     launchpadOwner = _launchpadOwner;
     isWhitelist = _isWhitelist;
     tokenDecimals = _tokenDecimals;
+    pinkLock = IPinkLock(_pinkLock);
     tokenInstance = IERC20(_tokenAddress);
     UniswapV2Router02 = IUniswapV2Router02(_uniswapv2Router);
     UniswapV2Factory = IUniswapV2Factory(_uniswapv2Factory);
@@ -161,8 +166,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     * @dev function to finish the sale
   */
   function finishSale() external onlyOwner onlyInActive nonReentrant{
-    require(ethRaised >= pool.softCap, "Soft cap not reached"); 
-    require(block.timestamp > pool.startTime, "Can not finish before sale start"); 
+    require(ethRaised >= pool.softCap, "Soft cap not reached");
+    require(block.timestamp > pool.startTime, "Can not finish before sale start");
     require(isRefund == false,"Refund already done");
     require(isFinished == false, "Sale is already finished");
 
@@ -179,16 +184,15 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     require(amountToken == tokensForLiquidity && amountETH == liquidityETH, "Liquidity add failed");
     
     // lock liquidity
-    IERC20 lpToken = IERC20(UniswapV2Factory.getPair(address(tokenInstance), UniswapV2Router02.WETH()));
-    uint liquidityAmount = lpToken.balanceOf(address(this));
-    LiquidityLock lock = new LiquidityLock(IERC20(lpToken), block.timestamp + (pool.lockPeriod * 1 minutes));
-    lpToken.approve(address(lock), liquidityAmount);
-
-    // transfer liquidity tokens to lock contract
-    lpToken.safeTransfer(address(lock), liquidityAmount);
-
-    emit Liquified(address(this), address(UniswapV2Router02), UniswapV2Factory.getPair(address(tokenInstance), weth));
+    address lpToken = UniswapV2Factory.getPair(address(tokenInstance), weth);
+    IERC20(lpToken).approve(address(pinkLock), tokensForLiquidity);
+    uint liquidityAmount = IERC20(lpToken).balanceOf(address(this));
     
+    IPinkLock lock = IPinkLock(pinkLock);
+    uint256 unlockDate = block.timestamp + (pool.lockPeriod * 1 minutes);
+    pinkLockId = lock.lock(address(this), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
+
+    emit Liquified(address(this), address(UniswapV2Router02), lpToken);
 
     // transfer fees(eth) to team 
     uint256 fees = _getTeamFee();
@@ -216,10 +220,9 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to release lp tokens
   */
-
-  function releaseLpTokens() external onlyOwner onlyInActive nonReentrant{
-    LiquidityLock lock = LiquidityLock(lpLock);
-    lock.withdraw();
+  function releaseLpTokens() external onlyOwner onlyInActive{
+    require(isFinished == true, "Sale is not finished");
+    pinkLock.unlock(pinkLockId);
   }
 
   /*

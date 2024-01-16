@@ -26,6 +26,7 @@ contract PresaleFactory is Ownable {
     function createPresale(
         IERC20 _tokenAddress,
         uint8 _tokenDecimals,
+        address _pinkLock,
         address _weth,
         address _uniswapv2Router,
         address _uniswapv2Factory,
@@ -35,7 +36,7 @@ contract PresaleFactory is Ownable {
         bool _isWhitelist,
         Presale.Pool memory _pool
     ) external onlyOwner() payable returns (address) {
-        Presale presale = new Presale(_tokenAddress,_tokenDecimals,_weth,_uniswapv2Router,_uniswapv2Factory,_teamWallet,_launchpadOwner,_burnToken,_isWhitelist,_pool);
+        Presale presale = new Presale(_tokenAddress,_tokenDecimals,_pinkLock,_weth,_uniswapv2Router,_uniswapv2Factory,_teamWallet,_launchpadOwner,_burnToken,_isWhitelist,_pool);
 
         transferTokenToPresale(presale,address(_tokenAddress));
         

@@ -31,6 +31,8 @@ describe("Full Presale Test", function () {
     token = tokenCont;
 
     const [creator] = await ethers.getSigners();
+
+    const pinkLockAddress = "0x5E5b9bE5fd939c578ABE5800a90C566eeEbA44a5"
     const weth = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
     const uniswapv2Router = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
     const uniswapv2Factory = "0x6725F303b657a9451d8BA641348b6761A6CC7a17";
@@ -54,17 +56,13 @@ describe("Full Presale Test", function () {
       lockPeriod: presaleData.lockTime,
     }
 
-    const createPresaleContract = await presaleFactory.connect(creator).createPresale(token.target, 18, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool, { value: toWei(0.001) });
+    const createPresaleContract = await presaleFactory.connect(creator).createPresale(token.target, 18, pinkLockAddress, weth, uniswapv2Router, uniswapv2Factory, teamWallet, launchpadOwner, burnToken, isWhitelist, pool, { value: toWei(0.001) });
     const txReceipt = await ethers.provider.getTransactionReceipt(createPresaleContract.hash);
     const events = txReceipt?.logs.map((log: any) => presaleFactory.interface.parseLog(log as any));
     const presaleCreatedEvent = events?.find((e: any) => e?.name === 'PresaleCreated');
     const presaleCont = await ethers.getContractAt("Presale", presaleCreatedEvent?.args.presaleAddress, creator);
     presale = presaleCont;
-
   })
 
-
-
-  it("User Should be able to buy, claim and emergency withdraw", async function () {
-  })
+  it("User Should be able to buy, claim and emergency withdraw", async function () { })
 })
