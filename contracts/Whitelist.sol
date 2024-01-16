@@ -6,6 +6,12 @@ import "./Ownable.sol";
 abstract contract Whitelist is Ownable {
   mapping(address => bool) public whitelists;
 
+  // modifier onlyWhitelisted() 
+  modifier onlyWhitelisted() virtual {
+    require(whitelists[msg.sender] == true, "User not whitelisted");
+    _;
+  }
+
   function addWhitelist(address _address) external onlyOwner() {
     require(_address != address(0), "Invalid address");
     require(whitelists[_address] == false, "Already whitelisted");

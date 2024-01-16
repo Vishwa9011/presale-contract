@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { Presale, PresaleFactory, PresaleList, Token } from "../typechain-types"
-import { getBlock, toWei, tokensToDeposit } from "./utils";
+import { getBlock, toWei, tokensToDeposit, wait } from "./utils";
 import { initSaleData } from "./data";
 
 
@@ -13,14 +13,21 @@ describe("Full Presale Test", function () {
 
   const presaleData = initSaleData[0];
   this.beforeEach(async () => {
+    // deploy presale list
     const presaleListCont = await ethers.deployContract("PresaleList");
     await presaleListCont.waitForDeployment();
     presaleListing = presaleListCont;
 
+    // deploy factory
     const factoryCont = await ethers.deployContract("PresaleFactory", [presaleListing.target]);
     await factoryCont.waitForDeployment();
     presaleFactory = factoryCont;
 
+    //add factory contract to whitelist in presale list
+    const addWhitelistFactory = await presaleListCont.addWhitelist(presaleFactory.target);
+    await addWhitelistFactory.wait();
+
+    // deploy token
     const tokenCont = await ethers.deployContract("Token");
     await tokenCont.waitForDeployment();
 
