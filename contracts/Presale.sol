@@ -57,6 +57,20 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 lockPeriod; // lock period after listing
     uint256 startTime; // unix
     uint256 endTime; // unix
+    Links links;
+  }
+
+  struct Links {
+    string logo;
+    string website;
+    string facebook;
+    string twitter;
+    string github;
+    string telegram;
+    string instagram;
+    string reddit;
+    string discord;
+    string description;
   }
 
   Pool public pool;
@@ -398,5 +412,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     require(_presaleTokens > 0, "Invalid presale tokens.");
     presaleTokens = _presaleTokens;
   }
+
+  function setSocialLinks(Links memory _links) external onlyOwner {
+    pool.links = _links;
+  }
+
 }
 

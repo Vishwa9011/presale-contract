@@ -6,6 +6,19 @@ export type SaleData = {
   hardCap: number;
   listingRate: number;
   liquidityPercent: number;
+  lockTime: number;
+  links: {
+    logo: string;
+    website: string;
+    facebook: string;
+    twitter: string;
+    github: string;
+    telegram: string;
+    instagram: string;
+    reddit: string;
+    discord: string;
+    description: string;
+  }
 }
 
 export const initSaleData = [
@@ -17,7 +30,19 @@ export const initSaleData = [
     hardCap: 0.2,
     listingRate: 899,
     liquidityPercent: 51,
-    lockTime: 15
+    lockTime: 15,
+    links: {
+      logo: '',
+      website: '',
+      facebook: '',
+      twitter: '',
+      github: '',
+      telegram: '',
+      instagram: '',
+      reddit: '',
+      discord: '',
+      description: '',
+    }
   }
 ]
 

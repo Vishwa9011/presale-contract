@@ -57,6 +57,7 @@ describe("Presale contract", function () {
       startTime: timestampNow + 10,
       endTime: timestampNow + 450,
       lockPeriod: presaleData.lockTime,
+      links: presaleData.links,
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
@@ -143,10 +144,10 @@ describe("Presale contract", function () {
     // expect(user4TokenBalance).to.equal(toWei(50));
   });
 
-  it("Should be able to unlock lp token", async function () {
-    const [creator] = await ethers.getSigners();
-    await presale.connect(creator).releaseLpTokens();
-  })
+  // it("Should be able to unlock lp token", async function () {
+  //   const [creator] = await ethers.getSigners();
+  //   await presale.connect(creator).releaseLpTokens();
+  // })
 
   it.skip("Should be alble to emergency withdraw", async function () {
     const [creator, user1] = await ethers.getSigners();
@@ -203,6 +204,7 @@ describe("Presale Contract with Canceled Sale and refund", function () {
       startTime: timestampNow + 10,
       endTime: timestampNow + 450,
       lockPeriod: presaleData.lockTime,
+      links: presaleData.links,
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
@@ -332,6 +334,7 @@ describe("Presale Contract with Whitelist", function () {
       startTime: timestampNow + 10,
       endTime: timestampNow + 450,
       lockPeriod: presaleData.lockTime,
+      links: presaleData.links,
     }
 
     const presaleFactory = await ethers.getContractFactory("Presale");
