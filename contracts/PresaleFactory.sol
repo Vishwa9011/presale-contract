@@ -15,6 +15,7 @@ contract PresaleFactory is Ownable {
     using SafeERC20 for IERC20;
 
     address public presaleListContract;
+    uint public POOL_FEE = 0.001 ether;
 
     constructor(address _presaleList) {
         presaleListContract = _presaleList;
@@ -33,7 +34,7 @@ contract PresaleFactory is Ownable {
         bool _burnToken,
         bool _isWhitelist,
         Presale.Pool memory _pool
-    ) external onlyOwner() returns (address) {
+    ) external onlyOwner() payable returns (address) {
         Presale presale = new Presale(_tokenAddress,_tokenDecimals,_weth,_uniswapv2Router,_uniswapv2Factory,_teamWallet,_launchpadOwner,_burnToken,_isWhitelist,_pool);
 
         transferTokenToPresale(presale,address(_tokenAddress));
@@ -42,6 +43,15 @@ contract PresaleFactory is Ownable {
         presaleList.addPresale(address(presale));
 
         presale.transferOwnership(msg.sender);
+
+        // take 1BNB for creating Pool // for testnet
+        uint poolFee = getPoolFee();
+        if(msg.value > 0 && poolFee == msg.value) {
+            (bool _success,)= payable(_launchpadOwner).call{value: msg.value }("");
+            require(_success, "Transfer failed.");
+        }else{
+            revert("Pool fee is not valid");
+        }
 
         emit PresaleCreated(address(presale), msg.sender);
         return address(presale);
@@ -58,5 +68,14 @@ contract PresaleFactory is Ownable {
 
     function setPresaleListAddress(address _presaleList) external onlyOwner() {
         presaleListContract = _presaleList;
+    }
+
+    function setPoolFee(uint _poolFee) external onlyOwner() {
+        POOL_FEE = _poolFee;
+    }
+
+    // getPoolFee according to chain
+    function getPoolFee() internal view returns (uint) {
+        return POOL_FEE;
     }
 }

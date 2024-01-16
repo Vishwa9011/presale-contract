@@ -37,6 +37,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   uint8 public tokenDecimals; // token decimals
   uint8 constant private FEE = 5; // 5% of eth raised
   uint8 constant private EMERGENCY_WITHDRAW_FEE = 10; // 10% of contributor balance
+  uint8 constant private POOL_FEE = 1;
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable weth; // weth address for uniswap
   address public immutable launchpadOwner; // launchpad owner address
@@ -123,7 +124,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     _;
   }
 
-  modifier onlyRefund(){
+  modifier onlyRefund() {
     require(isRefund == true ||(block.timestamp > pool.endTime && ethRaised <= pool.hardCap), "Refund unavailable");
     _;
   }
@@ -144,7 +145,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     * @dev function to deposit tokens into the contract
   */
 
-  function deposit() external onlyOwner() onlyInActive() nonReentrant(){
+  function deposit() external onlyOwner onlyInActive nonReentrant{
     require(isInitialized == true, "Sale is not initialized");
     require(isTokenDeposited == false,"Tokens already deposited");
 
@@ -159,7 +160,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to finish the sale
   */
-  function finishSale() external onlyOwner() onlyInActive() nonReentrant(){
+  function finishSale() external onlyOwner onlyInActive nonReentrant{
     require(ethRaised >= pool.softCap, "Soft cap not reached"); 
     require(block.timestamp > pool.startTime, "Can not finish before sale start"); 
     require(isRefund == false,"Refund already done");
@@ -191,12 +192,12 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
     // transfer fees(eth) to team 
     uint256 fees = _getTeamFee();
-    payable(teamWallet).transfer(fees);
+    sendEther(teamWallet,fees);
 
     // transfer eth to owner
     uint256 creatorShare = _getOwnerShare();
     if(creatorShare > 0){
-      payable(owner()).transfer(creatorShare);
+      sendEther(owner(), creatorShare);
     }
 
     // if hardcap is not reached then burn or refund the remain tokens
@@ -216,7 +217,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     * @dev function to release lp tokens
   */
 
-  function releaseLpTokens() external onlyOwner() onlyInActive() nonReentrant(){
+  function releaseLpTokens() external onlyOwner onlyInActive nonReentrant{
     LiquidityLock lock = LiquidityLock(lpLock);
     lock.withdraw();
   }
@@ -224,7 +225,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to cancel the sale
   */
-  function cancelSale() external onlyOwnerAndLaunchpadOwner() onlyActive() nonReentrant(){
+  function cancelSale() external onlyOwnerAndLaunchpadOwner onlyActive nonReentrant{
     require(ethRaised < pool.hardCap, "Hard cap reached");
     require(isFinished == false, "Sale is already finished");
     pool.endTime = 0;
@@ -243,13 +244,13 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     * @dev function to refund
   */
 
-  function refund() external onlyInActive() onlyRefund() nonReentrant(){
+  function refund() external onlyInActive onlyRefund nonReentrant{
     uint256 refundAmount = contributorBalance[msg.sender];
     require(refundAmount > 0, "No refund available");
     if(address(this).balance > refundAmount){
       if(refundAmount > 0){
         contributorBalance[msg.sender] = 0;
-        payable(msg.sender).transfer(refundAmount);
+        sendEther(msg.sender, refundAmount);
         emit Refunded(msg.sender, refundAmount);
       }
     }
@@ -258,7 +259,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to claim tokens after listing
   */
-  function claimTokens() external onlyInActive() nonReentrant(){
+  function claimTokens() external onlyInActive nonReentrant{
     require(isFinished , "Sale is still active");
     
     uint256 tokensAmount = _getUserTokens(msg.sender);
@@ -271,7 +272,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to withdraw tokens or refund
   */
-  function withdrawTokens() external onlyOwnerAndLaunchpadOwner() onlyInActive() onlyRefund() nonReentrant(){
+  function withdrawTokens() external onlyOwnerAndLaunchpadOwner onlyInActive onlyRefund  nonReentrant{
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
       uint256 tokenDeposit = getTokensToDeposit();
@@ -285,7 +286,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     * if user wants to cancelBuy and get refund for his amount
     * 10% fee will be deducted for emergency withdraw
   */
-  function emergencyWithdraw() external onlyActive() nonReentrant(){
+  function emergencyWithdraw() external onlyActive nonReentrant{
     uint256 refundAmount = contributorBalance[msg.sender];
     require(refundAmount > 0, "No refund available");
     if(address(this).balance > refundAmount){
@@ -304,7 +305,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to buy tokens
   */
-  function buyTokens() public payable onlyActive() nonReentrant(){
+  function buyTokens() public payable onlyActive nonReentrant{
     require(isTokenDeposited,"Tokens not deposited");
     require(isRefund == false,"Sale has been cancelled");
 
@@ -368,25 +369,28 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     return tokens / (10 ** 18) / (10 ** (18 - tokenDecimals));
   }
 
+  function sendEther(address to, uint amount) internal{
+    (bool success, ) = payable(to).call{value: amount}("");
+    require(success, "Failed to send Ether");
+  }
 
   // setter functions
-
-  function setWhitelist(bool _isWhitelist) external onlyOwner(){
+  function setWhitelist(bool _isWhitelist) external onlyOwner{
     isWhitelist = _isWhitelist;
   }
 
-  function setPoolStartTime(uint256 _startTime) external onlyOwner() onlyInActive(){
+  function setPoolStartTime(uint256 _startTime) external onlyOwner onlyInActive{
     require(_startTime >= block.timestamp, "Invalid start time.");
     require(_startTime < pool.endTime, "Invalid start time.");
     pool.startTime = _startTime;
   }
 
-  function setPoolEndTime(uint256 _endTime) external onlyOwner() onlyInActive(){
+  function setPoolEndTime(uint256 _endTime) external onlyOwner onlyInActive{
     require(_endTime > pool.startTime, "Invalid end time.");
     pool.endTime = _endTime;
   }
 
-  function setPresaleTokens(uint256 _presaleTokens) external onlyOwner() onlyInActive(){
+  function setPresaleTokens(uint256 _presaleTokens) external onlyOwner onlyInActive{
     require(presaleTokens ==0, "Presale tokens already set.");
     require(_presaleTokens > 0, "Invalid presale tokens.");
     presaleTokens = _presaleTokens;
