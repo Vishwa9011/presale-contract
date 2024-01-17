@@ -24,21 +24,13 @@ contract PresaleFactory is Ownable {
     event PresaleCreated(address indexed presaleAddress, address indexed owner);
 
     function createPresale(
-        IERC20 _tokenAddress,
-        uint8 _tokenDecimals,
-        address _pinkLock,
-        address _weth,
-        address _uniswapv2Router,
-        address _uniswapv2Factory,
-        address _teamWallet,
-        address _launchpadOwner,
-        bool _burnToken,
-        bool _isWhitelist,
-        Presale.Pool memory _pool
+        Presale.PresaleInfo memory _presaleInfo,
+        Presale.Pool memory _pool,
+        Presale.Links memory _links
     ) external onlyOwner() payable returns (address) {
-        Presale presale = new Presale(_tokenAddress,_tokenDecimals,_pinkLock,_weth,_uniswapv2Router,_uniswapv2Factory,_teamWallet,_launchpadOwner,_burnToken,_isWhitelist,_pool);
+        Presale presale = new Presale(_presaleInfo, _pool, _links);
 
-        transferTokenToPresale(presale,address(_tokenAddress));
+        transferTokenToPresale(presale,address(_presaleInfo.tokenAddress));
         
         IPresaleList presaleList = IPresaleList(presaleListContract);
         presaleList.addPresale(address(presale));
@@ -48,7 +40,7 @@ contract PresaleFactory is Ownable {
         // take 1BNB for creating Pool // for testnet
         uint poolFee = getPoolFee();
         if(msg.value > 0 && poolFee == msg.value) {
-            (bool _success,)= payable(_launchpadOwner).call{value: msg.value }("");
+            (bool _success,)= payable(_presaleInfo.launchpadOwner).call{value: msg.value }("");
             require(_success, "Transfer failed.");
         }else{
             revert("Pool fee is not valid");

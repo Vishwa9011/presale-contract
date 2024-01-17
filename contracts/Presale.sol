@@ -6,10 +6,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-
 import "./Ownable.sol";
 import "./Whitelist.sol";
-
 
 interface IUniswapV2Router02 {
     function addLiquidityETH(address token,uint amountTokenDesired,uint amountTokenMin,uint amountETHMin,address to,uint deadline) external payable returns (uint amountToken,uint amountETH,uint liquidity);
@@ -24,7 +22,6 @@ interface IPinkLock {
    function lock(address owner,address token,bool isLpToken,uint256 amount,uint256 unlockDate,string memory description) external returns (uint256 lockId);
    function unlock(uint256 lockId) external;
 }
-
 
 contract Presale is Ownable, Whitelist, ReentrancyGuard {
   using SafeERC20 for IERC20;
@@ -57,7 +54,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 lockPeriod; // lock period after listing
     uint256 startTime; // unix
     uint256 endTime; // unix
-    Links links;
   }
 
   struct Links {
@@ -73,24 +69,37 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     string description;
   }
 
+  struct PresaleInfo {
+    address tokenAddress;
+    uint8 tokenDecimals;
+    address pinkLock;
+    address weth;
+    address uniswapv2Router;
+    address uniswapv2Factory;
+    address teamWallet;
+    address launchpadOwner;
+    bool burnToken;
+    bool isWhitelist;
+  }
+
   Pool public pool;
+  Links public links;
   IPinkLock public pinkLock; // lp token address
   IERC20 public tokenInstance;  
   IUniswapV2Router02 public UniswapV2Router02;
   IUniswapV2Factory public UniswapV2Factory;
 
-
   mapping(address => uint256) public contributorBalance; // contributor address => eth contributed
 
   // constructor
-  constructor(IERC20 _tokenAddress, uint8 _tokenDecimals,address _pinkLock, address _weth, address _uniswapv2Router, address _uniswapv2Factory, address _teamWallet, address _launchpadOwner, bool _burnToken, bool _isWhitelist, Pool memory newPool) {
-    require(_weth != address(0), "Invalid weth address");
-    require(_teamWallet != address(0), "Invalid team wallet address");
-    require(_launchpadOwner != address(0), "Invalid launchpad owner address");
-    require(_uniswapv2Router != address(0), "Invalid router address");
-    require(_uniswapv2Factory != address(0), "Invalid factory address");
-    require(_tokenAddress != IERC20(address(0)), "Invalid token address");
-    require(_tokenDecimals >= 0 && _tokenDecimals <= 18, "Invalid token decimals");
+  constructor(PresaleInfo memory presaleInfo, Pool memory newPool, Links memory _links) {
+    require(presaleInfo.weth != address(0), "Invalid weth address");
+    require(presaleInfo.teamWallet != address(0), "Invalid team wallet address");
+    require(presaleInfo.launchpadOwner != address(0), "Invalid launchpad owner address");
+    require(presaleInfo.uniswapv2Router != address(0), "Invalid router address");
+    require(presaleInfo.uniswapv2Factory != address(0), "Invalid factory address");
+    require(presaleInfo.tokenAddress != address(0), "Invalid token address");
+    require(presaleInfo.tokenDecimals >= 0 && presaleInfo.tokenDecimals <= 18, "Invalid token decimals");
 
     // require statements for pool
     require(newPool.endTime > newPool.startTime, "Invalid end time.");
@@ -108,22 +117,23 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     isFinished = false;
     isInitialized = true;
 
-    weth = _weth;
-    burnToken = _burnToken;
-    teamWallet = _teamWallet;
-    launchpadOwner = _launchpadOwner;
-    isWhitelist = _isWhitelist;
-    tokenDecimals = _tokenDecimals;
-    pinkLock = IPinkLock(_pinkLock);
-    tokenInstance = IERC20(_tokenAddress);
-    UniswapV2Router02 = IUniswapV2Router02(_uniswapv2Router);
-    UniswapV2Factory = IUniswapV2Factory(_uniswapv2Factory);
+    weth = presaleInfo.weth;
+    burnToken = presaleInfo.burnToken;
+    teamWallet = presaleInfo.teamWallet;
+    launchpadOwner = presaleInfo.launchpadOwner;
+    isWhitelist = presaleInfo.isWhitelist;
+    tokenDecimals = presaleInfo.tokenDecimals;
+    pinkLock = IPinkLock(presaleInfo.pinkLock);
+    tokenInstance = IERC20(presaleInfo.tokenAddress);
+    UniswapV2Router02 = IUniswapV2Router02(presaleInfo.uniswapv2Router);
+    UniswapV2Factory = IUniswapV2Factory(presaleInfo.uniswapv2Factory);
 
     require(UniswapV2Factory.getPair(address(tokenInstance), weth) == address(0), "Pair already exists");
-    tokenInstance.approve(_uniswapv2Router, tokenInstance.totalSupply());
+    tokenInstance.approve(presaleInfo.uniswapv2Router, tokenInstance.totalSupply());
 
     // initialize the sale
     pool = newPool;
+    links = _links;
   }
  
 
@@ -353,6 +363,33 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     return (tokensForSale + tokensForLiquidity);
   }
 
+  // function to get info of the pool
+  struct PresaleData {
+    Pool pool;
+    uint256 ethRaised;
+    uint256 presaleTokens;
+    uint256 tokenDecimals;
+    address owner;
+    bool isWhitelist;
+    bool isFinished;
+    bool burnToken;
+    bool isRefund;
+  }
+
+  function getPresaleData() external view returns (PresaleData memory) {
+    return PresaleData({
+      pool: pool,
+      ethRaised: ethRaised,
+      presaleTokens: presaleTokens,
+      tokenDecimals: tokenDecimals,
+      owner: owner(),
+      isWhitelist: isWhitelist,
+      isFinished: isFinished,
+      burnToken: burnToken,
+      isRefund: isRefund
+    });
+  }
+
   /*
     * @dev internal function
   */
@@ -396,14 +433,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     isWhitelist = _isWhitelist;
   }
 
-  function setPoolStartTime(uint256 _startTime) external onlyOwner onlyInActive{
-    require(_startTime >= block.timestamp, "Invalid start time.");
-    require(_startTime < pool.endTime, "Invalid start time.");
+  function setPoolStartTime(uint _startTime, uint _endTime) external onlyOwner onlyInActive{
+    require(_startTime > block.timestamp, "Invalid start time.");
+    require(_endTime > _startTime, "Invalid end time.");
     pool.startTime = _startTime;
-  }
-
-  function setPoolEndTime(uint256 _endTime) external onlyOwner onlyInActive{
-    require(_endTime > pool.startTime, "Invalid end time.");
     pool.endTime = _endTime;
   }
 
@@ -414,7 +447,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   function setSocialLinks(Links memory _links) external onlyOwner {
-    pool.links = _links;
+    links = _links;
   }
 
 }
