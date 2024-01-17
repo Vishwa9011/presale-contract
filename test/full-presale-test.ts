@@ -77,6 +77,7 @@ describe("Full Presale Test", function () {
 
   it("it should return presale data", async function () {
     const presalesData = await presaleListing.getPresales();
+    console.log('presalesData: ', presalesData);
     expect(presalesData.length).to.be.equal(1);
   })
 })

@@ -21,11 +21,17 @@ contract PresaleList is Ownable, Whitelist {
     presales.push(_presale);
   }
 
-  function getPresales() external view returns (Presale.PresaleData[] memory) {
-    Presale.PresaleData[] memory presaleData = new Presale.PresaleData[](presales.length);
+
+  struct PresaleData2 {
+    address presale;
+    Presale.PresaleData data;
+  }
+
+  function getPresales() external view returns (PresaleData2[] memory) {
+    PresaleData2[] memory presaleData = new PresaleData2[](presales.length);
     for (uint256 i = 0; i < presales.length; i++) {
       IPresale presale = IPresale(presales[i]);
-      presaleData[i] = presale.getPresaleData();
+      presaleData[i] = PresaleData2(presales[i], presale.getPresaleData());
     }
     return presaleData;
   }
