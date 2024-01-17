@@ -368,6 +368,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     Pool pool;
     uint256 ethRaised;
     uint256 presaleTokens;
+    address tokenAddress;
     uint256 tokenDecimals;
     address owner;
     bool isWhitelist;
@@ -380,6 +381,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     return PresaleData({
       pool: pool,
       ethRaised: ethRaised,
+      tokenAddress: address(tokenInstance),
       presaleTokens: presaleTokens,
       tokenDecimals: tokenDecimals,
       owner: owner(),
