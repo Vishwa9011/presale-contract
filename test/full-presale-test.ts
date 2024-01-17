@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { Presale, PresaleFactory, PresaleList, Token } from "../typechain-types"
 import { getBlock, toWei, tokensToDeposit, wait } from "./utils";
 import { initSaleData } from "./data";
-
+import { expect } from "chai";
 
 
 describe("Full Presale Test", function () {
@@ -76,7 +76,7 @@ describe("Full Presale Test", function () {
   })
 
   it("it should return presale data", async function () {
-    const presaleData = await presaleListing.getPresales();
-    console.log(presaleData);
+    const presalesData = await presaleListing.getPresales();
+    expect(presalesData.length).to.be.equal(1);
   })
 })
