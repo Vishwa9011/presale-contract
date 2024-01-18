@@ -182,7 +182,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 totalDeposit = getTokensToDeposit();
     isTokenDeposited = true;
 
-    tokenInstance.safeTransferFrom(msg.sender, address(this), totalDeposit);
     emit Deposited(msg.sender, totalDeposit);
   }
 
@@ -440,12 +439,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     require(_endTime > _startTime, "Invalid end time.");
     pool.startTime = _startTime;
     pool.endTime = _endTime;
-  }
-
-  function setPresaleTokens(uint256 _presaleTokens) external onlyOwner onlyInActive{
-    require(presaleTokens ==0, "Presale tokens already set.");
-    require(_presaleTokens > 0, "Invalid presale tokens.");
-    presaleTokens = _presaleTokens;
   }
 
   function setSocialLinks(Links memory _links) external onlyOwner {

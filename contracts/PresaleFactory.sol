@@ -27,7 +27,7 @@ contract PresaleFactory is Ownable {
         Presale.PresaleInfo memory _presaleInfo,
         Presale.Pool memory _pool,
         Presale.Links memory _links
-    ) external onlyOwner() payable returns (address) {
+    ) external payable returns (address) {
         Presale presale = new Presale(_presaleInfo, _pool, _links);
 
         transferTokenToPresale(presale,address(_presaleInfo.tokenAddress));
@@ -51,10 +51,9 @@ contract PresaleFactory is Ownable {
     }
 
     function transferTokenToPresale(Presale presale,address _tokenAddress) internal {
+        presale.deposit();
         uint256 presaleTokenToDeposit = presale.getTokensToDeposit();
         IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(presale), presaleTokenToDeposit);
-        presale.setPresaleTokens(presaleTokenToDeposit);
-
         uint256 presaleContractbalance = IERC20(_tokenAddress).balanceOf(address(presale));
         require(presaleContractbalance == presaleTokenToDeposit,"Presale contract balance is not equal to presale tokens");
     }

@@ -58,3 +58,5 @@ await approvePresale.wait();
         const initSale = await presale.connect(creator).initSale(timestampNow + 35, timestampNow + 450, 75, BigInt(70000000000 * (10**18)), BigInt(50000000000*(10**18)), BigInt(3000000000000000), BigInt(2000000000000000), BigInt(3000000000000000), BigInt(3000000000000));
         await initSale.wait();
         console.log('Sale initialized');
+
+

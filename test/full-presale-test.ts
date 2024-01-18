@@ -2,7 +2,9 @@ import { ethers } from "hardhat";
 import { Presale, PresaleFactory, PresaleList, Token } from "../typechain-types"
 import { getBlock, toWei, tokensToDeposit, wait } from "./utils";
 import { initSaleData } from "./data";
-import { expect } from "chai";
+import { expect, } from "chai";
+import { time } from "@nomicfoundation/hardhat-network-helpers"
+
 
 
 describe("Full Presale Test", function () {
@@ -39,7 +41,7 @@ describe("Full Presale Test", function () {
 
     const [creator] = await ethers.getSigners();
 
-    const timestampNow = (await getBlock())?.timestamp ?? 0;
+    const timestampNow = await time.latest();
 
     const pool: Presale.PoolStruct = {
       saleRate: toWei(presaleData.saleRate),
@@ -75,9 +77,52 @@ describe("Full Presale Test", function () {
     presale = presaleCont;
   })
 
-  it("it should return presale data", async function () {
-    const presalesData = await presaleListing.getPresales();
-    console.log('presalesData: ', presalesData);
-    expect(presalesData.length).to.be.equal(1);
+  const contributorBalance = async (address: string) => {
+    return await presale.contributorBalance(address);
+  }
+
+  it("Users should be able to wait for sale start, buytokens, wait for sale end,finalize sale, claim tokens", async function () {
+    const [creator, user1, user2, user3, user4] = await ethers.getSigners();
+
+    await time.increase(20);
+
+    const user1Con = await presale.connect(user1).buyTokens({ value: toWei(0.05) })
+    await user1Con.wait();
+    const user2Con = await presale.connect(user2).buyTokens({ value: toWei(0.05) })
+    await user2Con.wait();
+    const user3Con = await presale.connect(user3).buyTokens({ value: toWei(0.05) })
+    await user3Con.wait();
+
+    const user1Balance = await contributorBalance(user1.address);
+    expect(user1Balance).to.equal(toWei(0.05));
+    const user2Balance = await contributorBalance(user2.address);
+    expect(user2Balance).to.equal(toWei(0.05));
+    const user3Balance = await contributorBalance(user3.address);
+    expect(user3Balance).to.equal(toWei(0.05));
+
+    await time.increase(500);
+
+    const finalize = await presale.connect(creator).finishSale();
+    await finalize.wait();
+
+    const user1Claim = await presale.connect(user1).claimTokens();
+    await user1Claim.wait();
+
+    const user2Claim = await presale.connect(user2).claimTokens();
+    await user2Claim.wait();
+
+    const user3Claim = await presale.connect(user3).claimTokens();
+    await user3Claim.wait();
+
+    const user1TokenBalance = await token.balanceOf(user1.address);
+    expect(user1TokenBalance).to.equal(toWei(50));
+
+    const user2TokenBalance = await token.balanceOf(user2.address);
+    expect(user2TokenBalance).to.equal(toWei(50));
+
+    const user3TokenBalance = await token.balanceOf(user3.address);
+    expect(user3TokenBalance).to.equal(toWei(50));
   })
+
+
 })
