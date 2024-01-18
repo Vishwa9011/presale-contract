@@ -365,6 +365,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   // function to get info of the pool
   struct PresaleData {
     Pool pool;
+    string logo;
     uint256 ethRaised;
     uint256 presaleTokens;
     address tokenAddress;
@@ -387,7 +388,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
       isWhitelist: isWhitelist,
       isFinished: isFinished,
       burnToken: burnToken,
-      isRefund: isRefund
+      isRefund: isRefund,
+      logo: links.logo
     });
   }
 

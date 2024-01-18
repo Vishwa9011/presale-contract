@@ -82,7 +82,13 @@ describe("Full Presale Test", function () {
   }
 
   it("Users should be able to wait for sale start, buytokens, wait for sale end,finalize sale, claim tokens", async function () {
+
+
+
     const [creator, user1, user2, user3, user4] = await ethers.getSigners();
+
+    const data = await presaleListing.getPresales();
+    console.log('data: ', data);
 
     await time.increase(20);
 
