@@ -1,9 +1,10 @@
 import { ethers } from "hardhat";
 import { Presale, PresaleFactory, PresaleList, Token } from "../typechain-types"
-import { getBlock, toWei, tokensToDeposit, wait } from "./utils";
+import { getBlock, getPresaleAddressFromTx, toWei, tokensToDeposit, wait } from "./utils";
 import { initSaleData } from "./data";
 import { expect, } from "chai";
 import { time } from "@nomicfoundation/hardhat-network-helpers"
+import { Signer } from "ethers";
 
 
 
@@ -13,36 +14,9 @@ describe("Full Presale Test", function () {
   let presaleFactory: PresaleFactory;
   let presaleListing: PresaleList;
 
-  const presaleData = initSaleData[0];
-  this.beforeEach(async () => {
-    // deploy presale list
-    const presaleListCont = await ethers.deployContract("PresaleList");
-    await presaleListCont.waitForDeployment();
-    presaleListing = presaleListCont;
-
-    // deploy factory
-    const factoryCont = await ethers.deployContract("PresaleFactory", [presaleListing.target]);
-    await factoryCont.waitForDeployment();
-    presaleFactory = factoryCont;
-
-    //add factory contract to whitelist in presale list
-    const addWhitelistFactory = await presaleListCont.addWhitelist(presaleFactory.target);
-    await addWhitelistFactory.wait();
-
-    // deploy token
-    const tokenCont = await ethers.deployContract("Token");
-    await tokenCont.waitForDeployment();
-
-    // approve token to presale contract
-    const tokensToDepositForPresale = tokensToDeposit(presaleData);
-    const approve = await tokenCont.approve(presaleFactory.target, toWei(tokensToDepositForPresale))
-    await approve.wait();
-    token = tokenCont;
-
-    const [creator] = await ethers.getSigners();
-
+  const createPresale = async (creator: Signer) => {
+    console.log("token", token.target);
     const timestampNow = await time.latest();
-
     const pool: Presale.PoolStruct = {
       saleRate: toWei(presaleData.saleRate),
       listingRate: toWei(presaleData.listingRate),
@@ -70,25 +44,58 @@ describe("Full Presale Test", function () {
     }
 
     const createPresaleContract = await presaleFactory.connect(creator).createPresale(presaleInfo, pool, presaleData.links, { value: toWei(0.001) });
-    const txReceipt = await ethers.provider.getTransactionReceipt(createPresaleContract.hash);
-    const events = txReceipt?.logs.map((log: any) => presaleFactory.interface.parseLog(log as any));
-    const presaleCreatedEvent = events?.find((e: any) => e?.name === 'PresaleCreated');
-    const presaleCont = await ethers.getContractAt("Presale", presaleCreatedEvent?.args.presaleAddress, creator);
-    presale = presaleCont;
+    const presaleAddress = await getPresaleAddressFromTx(createPresaleContract.hash, presaleFactory);
+    const presaleCont = await ethers.getContractAt("Presale", presaleAddress, creator);
+    presale = presaleCont
+  }
+
+  const deployTokenAndApproveFactory = async (creator: Signer) => {
+    // deploy token
+    const tokenFactory = await ethers.getContractFactory("Token")
+    const tokenCont = await tokenFactory.connect(creator).deploy();
+    await tokenCont.waitForDeployment();
+
+    // approve token to presale contract
+    const tokensToDepositForPresale = tokensToDeposit(presaleData);
+    const approve = await tokenCont.approve(presaleFactory.target, toWei(tokensToDepositForPresale))
+    await approve.wait();
+
+    const allowance = await tokenCont.allowance((await creator.getAddress()), presaleFactory.target);
+    expect(allowance).to.equal(toWei(tokensToDepositForPresale));
+    token = tokenCont;
+  }
+
+  const presaleData = initSaleData[0];
+  this.beforeEach(async () => {
+    // deploy presale list
+    const presaleListCont = await ethers.deployContract("PresaleList");
+    await presaleListCont.waitForDeployment();
+    presaleListing = presaleListCont;
+
+    // deploy factory
+    const factoryCont = await ethers.deployContract("PresaleFactory", [presaleListing.target, toWei(0.001)]);
+    await factoryCont.waitForDeployment();
+    presaleFactory = factoryCont;
+
+    //add factory contract to whitelist in presale list
+    const addWhitelistFactory = await presaleListCont.addWhitelist(presaleFactory.target);
+    await addWhitelistFactory.wait();
+
+    const [creator] = await ethers.getSigners();
+
+    // deploy token and approve factory
+    await deployTokenAndApproveFactory(creator);
+    // create presale
+    await createPresale(creator);
   })
 
   const contributorBalance = async (address: string) => {
     return await presale.contributorBalance(address);
   }
 
+
   it("Users should be able to wait for sale start, buytokens, wait for sale end,finalize sale, claim tokens", async function () {
-
-
-
     const [creator, user1, user2, user3, user4] = await ethers.getSigners();
-
-    const data = await presaleListing.getPresales();
-    console.log('data: ', data);
 
     await time.increase(20);
 
@@ -128,7 +135,22 @@ describe("Full Presale Test", function () {
 
     const user3TokenBalance = await token.balanceOf(user3.address);
     expect(user3TokenBalance).to.equal(toWei(50));
-  })
 
+
+    // can get the user contributions
+    await deployTokenAndApproveFactory(user1)
+    await createPresale(user1);
+
+    await time.increase(20);
+
+    const user2Cont2 = await presale.connect(user2).buyTokens({ value: toWei(0.05) });
+    await user2Cont2.wait();
+
+
+    const getUser2Contribution = await presaleListing.getPresaleContributions(user2.address);
+    console.log('getUser2Contribution: ', getUser2Contribution);
+    expect(getUser2Contribution.length).to.equal(2);
+
+  })
 
 })

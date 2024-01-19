@@ -1,5 +1,6 @@
 import { ethers } from "hardhat";
 import { SaleData } from "./data"
+import { PresaleFactory } from "../typechain-types";
 
 export function toWei(value: number): bigint {
   return ethers.parseEther(value.toString());
@@ -18,14 +19,17 @@ export const tokensForLiquidity = (data: SaleData) => {
   return (liquidityTokens - (liquidityTokens * 5 / 100));
 }
 
-export const getOwnerFee = (hardCap: bigint) => {
-
-}
-
 export const wait = (ms: number) => {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export const getBlock = async () => {
   return await ethers.provider.getBlock('latest');
+}
+
+export const getPresaleAddressFromTx = async (hash: string, presaleFactory: PresaleFactory) => {
+  const txReceipt = await ethers.provider.getTransactionReceipt(hash);
+  const events = txReceipt?.logs.map((log: any) => presaleFactory.interface.parseLog(log as any));
+  const presaleCreatedEvent = events?.find((e: any) => e?.name === 'PresaleCreated');
+  return presaleCreatedEvent?.args.presaleAddress;
 }

@@ -3,48 +3,44 @@ pragma solidity ^0.8.20;
 
 import "./Presale.sol";
 import "./Ownable.sol";
+import "./IPresaleList.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-interface IPresaleList {
-    function addPresale(address _presale) external;
-    function getPresales() external view returns (address[] memory);
-}
 
 contract PresaleFactory is Ownable {
     using SafeERC20 for IERC20;
 
     address public presaleListContract;
-    uint public POOL_FEE = 0.001 ether;
+    uint public poolFee;
 
-    constructor(address _presaleList) {
+    constructor(address _presaleList, uint _poolFee) {
         presaleListContract = _presaleList;
+        poolFee = _poolFee;
     }
 
+    // events
     event PresaleCreated(address indexed presaleAddress, address indexed owner);
+
+    // errors
+    error TransferFailed();
+    error InvalidPoolFee();
+    error PresaleBalanceMismatch(uint256 expected, uint256 actual);
 
     function createPresale(
         Presale.PresaleInfo memory _presaleInfo,
         Presale.Pool memory _pool,
         Presale.Links memory _links
     ) external payable returns (address) {
-        Presale presale = new Presale(_presaleInfo, _pool, _links);
+        if(msg.value != poolFee) revert InvalidPoolFee();
 
+        Presale presale = new Presale(_presaleInfo, _pool, _links, presaleListContract);
         transferTokenToPresale(presale,address(_presaleInfo.tokenAddress));
-        
-        IPresaleList presaleList = IPresaleList(presaleListContract);
-        presaleList.addPresale(address(presale));
-
+        IPresaleList(presaleListContract).addPresale(address(presale));
         presale.transferOwnership(msg.sender);
 
-        // take 1BNB for creating Pool // for testnet
-        uint poolFee = getPoolFee();
-        if(msg.value > 0 && poolFee == msg.value) {
-            (bool _success,)= payable(_presaleInfo.launchpadOwner).call{value: msg.value }("");
-            require(_success, "Transfer failed.");
-        }else{
-            revert("Pool fee is not valid");
-        }
+        (bool _success,)= payable(_presaleInfo.launchpadOwner).call{value: msg.value }("");
+        if(!_success) revert("Transfer failed");
 
         emit PresaleCreated(address(presale), msg.sender);
         return address(presale);
@@ -54,8 +50,11 @@ contract PresaleFactory is Ownable {
         presale.deposit();
         uint256 presaleTokenToDeposit = presale.getTokensToDeposit();
         IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(presale), presaleTokenToDeposit);
+
         uint256 presaleContractbalance = IERC20(_tokenAddress).balanceOf(address(presale));
-        require(presaleContractbalance == presaleTokenToDeposit,"Presale contract balance is not equal to presale tokens");
+        if(presaleContractbalance != presaleTokenToDeposit) {
+            revert PresaleBalanceMismatch(presaleTokenToDeposit, presaleContractbalance);
+        }
     }
 
     function setPresaleListAddress(address _presaleList) external onlyOwner() {
@@ -63,11 +62,6 @@ contract PresaleFactory is Ownable {
     }
 
     function setPoolFee(uint _poolFee) external onlyOwner() {
-        POOL_FEE = _poolFee;
-    }
-
-    // getPoolFee according to chain
-    function getPoolFee() internal view returns (uint) {
-        return POOL_FEE;
+        poolFee = _poolFee;
     }
 }

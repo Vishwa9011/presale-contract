@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import "./Ownable.sol";
 import "./Whitelist.sol";
+import "./IPresaleList.sol";
 
 interface IUniswapV2Router02 {
     function addLiquidityETH(address token,uint amountTokenDesired,uint amountTokenMin,uint amountETHMin,address to,uint deadline) external payable returns (uint amountToken,uint amountETH,uint liquidity);
@@ -22,6 +23,9 @@ interface IPinkLock {
    function lock(address owner,address token,bool isLpToken,uint256 amount,uint256 unlockDate,string memory description) external returns (uint256 lockId);
    function unlock(uint256 lockId) external;
 }
+
+
+
 
 contract Presale is Ownable, Whitelist, ReentrancyGuard {
   using SafeERC20 for IERC20;
@@ -41,7 +45,9 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable weth; // weth address for uniswap
   address public immutable launchpadOwner; // launchpad owner address
+  address public immutable presaleList; // presale list cont. address
   uint public pinkLockId;
+ 
 
   struct Pool {
     uint256 saleRate; // 1 BNB = ? tokens -> for presale
@@ -92,7 +98,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   mapping(address => uint256) public contributorBalance; // contributor address => eth contributed
 
   // constructor
-  constructor(PresaleInfo memory presaleInfo, Pool memory newPool, Links memory _links) {
+  constructor(PresaleInfo memory presaleInfo, Pool memory newPool, Links memory _links, address _presaleList) {
     require(presaleInfo.weth != address(0), "Invalid weth address");
     require(presaleInfo.teamWallet != address(0), "Invalid team wallet address");
     require(presaleInfo.launchpadOwner != address(0), "Invalid launchpad owner address");
@@ -100,6 +106,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     require(presaleInfo.uniswapv2Factory != address(0), "Invalid factory address");
     require(presaleInfo.tokenAddress != address(0), "Invalid token address");
     require(presaleInfo.tokenDecimals >= 0 && presaleInfo.tokenDecimals <= 18, "Invalid token decimals");
+    require(presaleInfo.pinkLock != address(0), "Invalid pinkLock address");
+    require(_presaleList != address(0), "Invalid presale list address");
 
     // require statements for pool
     require(newPool.endTime > newPool.startTime, "Invalid end time.");
@@ -118,6 +126,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     isInitialized = true;
 
     weth = presaleInfo.weth;
+    presaleList = _presaleList; // presale list contract address
     burnToken = presaleInfo.burnToken;
     teamWallet = presaleInfo.teamWallet;
     launchpadOwner = presaleInfo.launchpadOwner;
@@ -154,7 +163,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   modifier onlyRefund() {
-    require(isRefund == true ||(block.timestamp > pool.endTime && ethRaised <= pool.hardCap), "Refund unavailable");
+    require(isRefund == true ||(block.timestamp > pool.endTime && ethRaised < pool.softCap), "Refund unavailable");
     _;
   }
 
@@ -298,7 +307,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   /*
     * @dev function to withdraw tokens or refund
   */
-  function withdrawTokens() external onlyOwnerAndLaunchpadOwner onlyInActive onlyRefund  nonReentrant{
+  function withdrawTokens() external onlyOwnerAndLaunchpadOwner onlyInActive onlyRefund nonReentrant{
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
       uint256 tokenDeposit = getTokensToDeposit();
@@ -341,6 +350,9 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     ethRaised += _amount;
     presaleTokens -= tokensAmount;
     contributorBalance[msg.sender] += _amount;
+
+    // add user contribution to presale list
+    IPresaleList(presaleList).addPresaleContributions(msg.sender, address(this));
     emit Bought(msg.sender, _amount);
   }
 
@@ -436,7 +448,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     isWhitelist = _isWhitelist;
   }
 
-  function setPoolStartTime(uint _startTime, uint _endTime) external onlyOwner onlyInActive{
+  function setPoolTime(uint _startTime, uint _endTime) external onlyOwner {
+    require(block.timestamp < pool.endTime, "Sale is already finished");
     require(_startTime > block.timestamp, "Invalid start time.");
     require(_endTime > _startTime, "Invalid end time.");
     pool.startTime = _startTime;
