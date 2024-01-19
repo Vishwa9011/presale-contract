@@ -1,6 +1,7 @@
 import { ethers } from "hardhat";
-import { SaleData } from "./data"
 import { PresaleFactory } from "../typechain-types";
+import { SaleData } from "./data";
+
 
 export function toWei(value: number): bigint {
   return ethers.parseEther(value.toString());

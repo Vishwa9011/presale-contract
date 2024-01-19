@@ -1,3 +1,5 @@
+import { Presale } from "../typechain-types";
+
 export type SaleData = {
   saleRate: number;
   minBuy: number;
@@ -20,6 +22,9 @@ export type SaleData = {
     description: string;
   }
 }
+
+export type DeploymentOptions = Pick<Presale.PresaleInfoStruct, 'isWhitelist'>;
+
 
 export const initSaleData = [
   {

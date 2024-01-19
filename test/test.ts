@@ -1,74 +1,25 @@
 import { expect } from "chai";
 import { ethers, network } from "hardhat";
-import { initSaleData } from "./data";
-import { getBlock, toWei, tokensToDeposit } from "./utils";
-import { Presale, Token } from '../typechain-types';
+import { DeploymentOptions, initSaleData } from "../utils/data";
+import { deployPresale, deployPresaleList, deployToken, toWei, tokensToDeposit } from "../utils";
+import { Presale, PresaleList, Token } from '../typechain-types';
 import { time } from "@nomicfoundation/hardhat-network-helpers"
 
-type DeploymentOptions = Pick<Presale.PresaleInfoStruct, 'isWhitelist'>;
-type PresaleContract = Presale
-type TokenContract = Token
-
-let token: TokenContract;
-let presale: PresaleContract;
+let token: Token;
+let presale: Presale;
+let presaleList: PresaleList;
 
 const presaleData = initSaleData[0];
-
-const getPresaleDeployArgs = async () => {
-  const timestampNow = await time.latest()
-
-  const pool: Presale.PoolStruct = {
-    saleRate: toWei(presaleData.saleRate),
-    listingRate: toWei(presaleData.listingRate),
-    softCap: toWei(presaleData.softCap),
-    hardCap: toWei(presaleData.hardCap),
-    minBuy: toWei(presaleData.minBuy),
-    maxBuy: toWei(presaleData.maxBuy),
-    liquidityPercent: presaleData.liquidityPercent,
-    startTime: timestampNow + 10,
-    endTime: timestampNow + 450,
-    lockPeriod: presaleData.lockTime
-  }
-
-  const presaleInfo: Presale.PresaleInfoStruct = {
-    burnToken: false,
-    tokenDecimals: 18,
-    isWhitelist: false,
-    tokenAddress: token.target,
-    weth: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
-    pinkLock: "0x5E5b9bE5fd939c578ABE5800a90C566eeEbA44a5",
-    teamWallet: "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B",
-    launchpadOwner: "0xCa65Ee22787809f5B0B8F4639cFe117543EAb30B",
-    uniswapv2Router: "0xD99D1c33F9fC3444f8101754aBC46c52416550D1",
-    uniswapv2Factory: "0x6725F303b657a9451d8BA641348b6761A6CC7a17",
-  }
-
-  const links = presaleData.links;
-
-  return { pool, presaleInfo, links }
-}
 
 const deployContracts = async (options?: DeploymentOptions) => {
   const [creator] = await ethers.getSigners();
 
-  // deploy token
-  const tokenFactory = await ethers.getContractFactory("Token");
-  const tokenCon = await tokenFactory.deploy();
-  await tokenCon.waitForDeployment();
-  token = tokenCon;
-
-  // deploy presale contract
-  const { pool, presaleInfo, links } = await getPresaleDeployArgs();
-  const presaleFactory = await ethers.getContractFactory("Presale");
-  const presaleCont = await presaleFactory.connect(creator).deploy({ ...presaleInfo, ...options }, pool, links, "0xEBCB2fFa7219429923347D9FD0E1116db2b0387D")
-  presale = presaleCont;
-
-  // approve token to presale contract
-  const tokensToDepositForPresale = tokensToDeposit(presaleData);
-  const approve = await token.approve(presale.target, toWei(tokensToDepositForPresale))
-  await approve.wait();
+  presaleList = await deployPresaleList(creator);
+  token = await deployToken(creator);
+  presale = await deployPresale(creator, presaleData, token.target.toString(), presaleList.target.toString(), options)
 
   // deposit tokens
+  const tokensToDepositForPresale = tokensToDeposit(presaleData);
   const deposit = await presale.connect(creator).deposit();
   token.transfer(presale.target, toWei(tokensToDepositForPresale));
   await deposit.wait();
@@ -76,8 +27,6 @@ const deployContracts = async (options?: DeploymentOptions) => {
   const balance = await token.balanceOf(presale.target);
   const depositTokens = tokensToDeposit(presaleData);
   expect(balance).to.equal(toWei(depositTokens))
-
-  return { token, presale }
 }
 
 
@@ -96,7 +45,7 @@ describe("Presale contract", function () {
   })
 
   it("Should be contritbuted by users", async function () {
-    const [creator, user1, user2, user3, user4] = await ethers.getSigners();
+    const [_, user1, user2, user3] = await ethers.getSigners();
 
     const user1Con = await presale.connect(user1).buyTokens({ value: toWei(0.05) })
     await user1Con.wait();
