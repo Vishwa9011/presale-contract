@@ -60,3 +60,22 @@ await approvePresale.wait();
         console.log('Sale initialized');
 
 
+------------------------------------
+
+presaleRate = 1BNB = 1000;  -> tokens per BNB
+listingRate = 1BNB = 800;
+liquidityPercent = 60;
+hardCap = 2BNB;
+poolfee = 5;
+
+
+
+## Learn More
+
+tokenforSale = presaleRate * hardCap = 1000 * 2 = 2000 tokens
+tokenforLiquidity = listingRate * hardCap * liquidityPrecent / 100 = 800 * 2 * 60 / 100 = 960 tokens;
+tokenForLiquidity = tokenforLiquidity - (tokensForLiquidity * poolfee / 100) = 960 - (960 * 5 / 100) = 912 tokens;
+
+
+
+totalTokens = tokenforsale + tokenforLiquidity = 2000 + 912 = 2912 tokens

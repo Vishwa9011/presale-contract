@@ -20,6 +20,7 @@ const deployContracts = async (options?: DeploymentOptions) => {
 
   // deposit tokens
   const tokensToDepositForPresale = tokensToDeposit(presaleData);
+  console.log('tokensToDepositForPresale: ', tokensToDepositForPresale);
   const deposit = await presale.connect(creator).deposit();
   token.transfer(presale.target, toWei(tokensToDepositForPresale));
   await deposit.wait();

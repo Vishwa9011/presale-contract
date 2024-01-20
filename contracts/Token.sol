@@ -192,7 +192,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     }
 
     function decimals() public view virtual override returns (uint8) {
-        return 18;
+        return 9;
     }
 
     function totalSupply() public view virtual override returns (uint256) {
@@ -328,6 +328,6 @@ contract Token is Ownable, ERC20{
     using SafeMath for uint256;
 
     constructor() ERC20("SixtyNine", "SNT"){
-        _mint(owner(), 1000000000 * (10 ** 18));
+        _mint(owner(), 1000000000 * (10 ** 9));
     }
 }

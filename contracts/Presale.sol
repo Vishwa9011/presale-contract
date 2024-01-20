@@ -39,9 +39,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   uint256 public ethRaised; // total eth raised
   uint256 public presaleTokens; // tokens for presale
   uint8 public tokenDecimals; // token decimals
-  uint8 constant private FEE = 5; // 5% of eth raised
+  uint8 private FEE = 5; // 5% of eth raised
   uint8 constant private EMERGENCY_WITHDRAW_FEE = 10; // 10% of contributor balance
-  uint8 constant private POOL_FEE = 1;
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable weth; // weth address for uniswap
   address public immutable launchpadOwner; // launchpad owner address
@@ -153,7 +152,12 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   modifier onlyOwnerAndLaunchpadOwner() {
-    require(_msgSender() == owner() ,"Caller must be owner");
+    require(_msgSender() == owner() || _msgSender() == launchpadOwner,"Caller must be owner");
+    _;
+  }
+
+  modifier onlyLaunchpadOwner(){
+    require(_msgSender() == launchpadOwner,"Caller must be launchpad owner");
     _;
   }
 
@@ -187,7 +191,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     require(isInitialized == true, "Sale is not initialized");
     require(isTokenDeposited == false,"Tokens already deposited");
 
-    presaleTokens = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    presaleTokens = pool.hardCap * pool.saleRate / (10 ** 18);
     uint256 totalDeposit = getTokensToDeposit();
     isTokenDeposited = true;
 
@@ -205,9 +209,9 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
     isFinished = true;
     // getting used amount of tokens
-    uint256 tokensForSale = ethRaised * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    uint256 tokensForSale = ethRaised * pool.saleRate / (10 ** 18);
     uint256 tokensForLiquidity = ethRaised * pool.listingRate * pool.liquidityPercent / 100;
-    tokensForLiquidity =tokensForLiquidity / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    tokensForLiquidity =tokensForLiquidity / (10 ** 18);
     tokensForLiquidity = tokensForLiquidity - (tokensForLiquidity * FEE / 100);
 
     // transfer tokens to liquidity
@@ -228,7 +232,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
     // transfer fees(eth) to team 
     uint256 fees = _getTeamFee();
-    sendEther(teamWallet,fees);
+    sendEther(teamWallet, fees);
 
     // transfer eth to owner
     uint256 creatorShare = _getOwnerShare();
@@ -369,7 +373,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
   // function to get how many tokens he needs to deposit;
   function getTokensToDeposit() public view returns(uint256) {
-    uint256 tokensForSale = pool.hardCap * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    uint256 tokensForSale = pool.hardCap * pool.saleRate / (10 ** 18);
     uint256 tokensForLiquidity = _getLiquidityTokensToDeposit();
     return (tokensForSale + tokensForLiquidity);
   }
@@ -427,7 +431,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   function _getUserTokens(address _contributor) internal view returns(uint256) {
-    uint256 tokens = contributorBalance[_contributor] * pool.saleRate / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    uint256 tokens = contributorBalance[_contributor] * pool.saleRate / (10 ** 18);
     return tokens;
   }
 
@@ -435,7 +439,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   function _getLiquidityTokensToDeposit() internal view returns(uint256) {
     uint256 tokens = pool.hardCap * pool.liquidityPercent * pool.listingRate / 100;
     tokens = tokens - (tokens * FEE / 100);
-    return tokens / (10 ** 18) / (10 ** (18 - tokenDecimals));
+    return tokens / (10 ** 18);
   }
 
   function sendEther(address to, uint amount) internal{
@@ -458,6 +462,11 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
   function setSocialLinks(Links memory _links) external onlyOwner {
     links = _links;
+  }
+
+  function setFee(uint8 _fee) external onlyLaunchpadOwner {
+    require(_fee > 0 && _fee <= 10, "Invalid fee");
+    FEE = _fee;
   }
 
 }
