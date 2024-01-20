@@ -11,7 +11,8 @@ import "./Whitelist.sol";
 import "./IPresaleList.sol";
 
 interface IUniswapV2Router02 {
-    function addLiquidityETH(address token,uint amountTokenDesired,uint amountTokenMin,uint amountETHMin,address to,uint deadline) external payable returns (uint amountToken,uint amountETH,uint liquidity);
+    function factory() external pure returns (address);
+    function addLiquidityETH(address token,uint256 amountTokenDesired,uint256 amountTokenMin,uint256 amountETHMin,address to,uint256 deadline) external payable returns (uint256 amountToken,uint256 amountETH,uint256 liquidity);
     function WETH() external pure returns (address);
 }
 
@@ -20,12 +21,9 @@ interface IUniswapV2Factory {
 }
 
 interface IPinkLock {
-   function lock(address owner,address token,bool isLpToken,uint256 amount,uint256 unlockDate,string memory description) external returns (uint256 lockId);
+   function lock(address owner, address token,bool isLpToken,uint256 amount,uint256 unlockDate,string memory description) external returns (uint256 lockId);
    function unlock(uint256 lockId) external;
 }
-
-
-
 
 contract Presale is Ownable, Whitelist, ReentrancyGuard {
   using SafeERC20 for IERC20;
@@ -38,14 +36,13 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   bool public isRefund;
   uint256 public ethRaised; // total eth raised
   uint256 public presaleTokens; // tokens for presale
-  uint8 public tokenDecimals; // token decimals
   uint8 private FEE = 5; // 5% of eth raised
-  uint8 constant private EMERGENCY_WITHDRAW_FEE = 10; // 10% of contributor balance
+  uint8 private EMERGENCY_WITHDRAW_FEE = 10; // 10% of contributor balance
   address public immutable teamWallet;  // wallet of the team (platform fees address)
   address public immutable weth; // weth address for uniswap
   address public immutable launchpadOwner; // launchpad owner address
   address public immutable presaleList; // presale list cont. address
-  uint public pinkLockId;
+  uint256 public pinkLockId;
  
 
   struct Pool {
@@ -76,11 +73,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
   struct PresaleInfo {
     address tokenAddress;
-    uint8 tokenDecimals;
     address pinkLock;
-    address weth;
     address uniswapv2Router;
-    address uniswapv2Factory;
     address teamWallet;
     address launchpadOwner;
     bool burnToken;
@@ -98,13 +92,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
   // constructor
   constructor(PresaleInfo memory presaleInfo, Pool memory newPool, Links memory _links, address _presaleList) {
-    require(presaleInfo.weth != address(0), "Invalid weth address");
     require(presaleInfo.teamWallet != address(0), "Invalid team wallet address");
     require(presaleInfo.launchpadOwner != address(0), "Invalid launchpad owner address");
     require(presaleInfo.uniswapv2Router != address(0), "Invalid router address");
-    require(presaleInfo.uniswapv2Factory != address(0), "Invalid factory address");
     require(presaleInfo.tokenAddress != address(0), "Invalid token address");
-    require(presaleInfo.tokenDecimals >= 0 && presaleInfo.tokenDecimals <= 18, "Invalid token decimals");
     require(presaleInfo.pinkLock != address(0), "Invalid pinkLock address");
     require(_presaleList != address(0), "Invalid presale list address");
 
@@ -124,19 +115,20 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     isFinished = false;
     isInitialized = true;
 
-    weth = presaleInfo.weth;
     presaleList = _presaleList; // presale list contract address
     burnToken = presaleInfo.burnToken;
     teamWallet = presaleInfo.teamWallet;
     launchpadOwner = presaleInfo.launchpadOwner;
     isWhitelist = presaleInfo.isWhitelist;
-    tokenDecimals = presaleInfo.tokenDecimals;
     pinkLock = IPinkLock(presaleInfo.pinkLock);
     tokenInstance = IERC20(presaleInfo.tokenAddress);
     UniswapV2Router02 = IUniswapV2Router02(presaleInfo.uniswapv2Router);
-    UniswapV2Factory = IUniswapV2Factory(presaleInfo.uniswapv2Factory);
 
-    require(UniswapV2Factory.getPair(address(tokenInstance), weth) == address(0), "Pair already exists");
+    weth = UniswapV2Router02.WETH();
+    UniswapV2Factory = IUniswapV2Factory(UniswapV2Router02.factory());
+
+    address lpAddress = UniswapV2Factory.getPair(address(tokenInstance), weth);
+    require(tokenInstance.balanceOf(lpAddress) == 0, "Pair already has liquidity");
     tokenInstance.approve(presaleInfo.uniswapv2Router, tokenInstance.totalSupply());
 
     // initialize the sale
@@ -214,19 +206,23 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     tokensForLiquidity =tokensForLiquidity / (10 ** 18);
     tokensForLiquidity = tokensForLiquidity - (tokensForLiquidity * FEE / 100);
 
+    // check the token balance on pair
+    address lpAddress = UniswapV2Factory.getPair(address(tokenInstance), weth);
+    require(tokenInstance.balanceOf(lpAddress) == 0, "Pair already has liquidity");
+
     // transfer tokens to liquidity
     uint256 liquidityETH =  _getLiquidityETH();
-    (uint amountToken, uint amountETH,) = UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, address(this), block.timestamp);
+    (uint256 amountToken, uint256 amountETH,) = UniswapV2Router02.addLiquidityETH{value : liquidityETH}(address(tokenInstance), tokensForLiquidity, tokensForLiquidity, liquidityETH, address(this), block.timestamp);
     require(amountToken == tokensForLiquidity && amountETH == liquidityETH, "Liquidity add failed");
     
     // lock liquidity
     address lpToken = UniswapV2Factory.getPair(address(tokenInstance), weth);
     IERC20(lpToken).approve(address(pinkLock), tokensForLiquidity);
-    uint liquidityAmount = IERC20(lpToken).balanceOf(address(this));
+    uint256 liquidityAmount = IERC20(lpToken).balanceOf(address(this));
     
     IPinkLock lock = IPinkLock(pinkLock);
     uint256 unlockDate = block.timestamp + (pool.lockPeriod * 1 minutes);
-    pinkLockId = lock.lock(address(this), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
+    pinkLockId = lock.lock(owner(), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
 
     emit Liquified(address(this), address(UniswapV2Router02), lpToken);
 
@@ -247,7 +243,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
         tokenInstance.safeTransfer(address(0), remainTokens);
         emit BurnRemainder(msg.sender, remainTokens);
       }else{
+        uint256 ownerBalanceBefore = tokenInstance.balanceOf(owner());
         tokenInstance.safeTransfer(msg.sender, remainTokens);
+        uint256 ownerBalanceAfter = tokenInstance.balanceOf(owner());
+        require(ownerBalanceBefore + remainTokens == ownerBalanceAfter, "Token getting tax on transfer, please exclude this contract from tax");
         emit RefundRemainder(msg.sender, remainTokens);
       }
     }
@@ -304,7 +303,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 tokensAmount = _getUserTokens(msg.sender);
     require(tokensAmount > 0, "No tokens to claim");
     contributorBalance[msg.sender] = 0;
+    uint256 userBalanceBefore = tokenInstance.balanceOf(msg.sender);
     tokenInstance.safeTransfer(msg.sender, tokensAmount);
+    uint256 userBalanceAfter = tokenInstance.balanceOf(msg.sender);
+    require(userBalanceBefore + tokensAmount == userBalanceAfter, "Token getting tax on transfer, please exclude this contract from tax");
     emit Claimed(msg.sender, tokensAmount);
   }
 
@@ -385,7 +387,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 ethRaised;
     uint256 presaleTokens;
     address tokenAddress;
-    uint256 tokenDecimals;
     address owner;
     bool isWhitelist;
     bool isFinished;
@@ -399,7 +400,6 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
       ethRaised: ethRaised,
       tokenAddress: address(tokenInstance),
       presaleTokens: presaleTokens,
-      tokenDecimals: tokenDecimals,
       owner: owner(),
       isWhitelist: isWhitelist,
       isFinished: isFinished,
@@ -442,7 +442,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     return tokens / (10 ** 18);
   }
 
-  function sendEther(address to, uint amount) internal{
+  function sendEther(address to, uint256 amount) internal{
     (bool success, ) = payable(to).call{value: amount}("");
     require(success, "Failed to send Ether");
   }
@@ -452,7 +452,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     isWhitelist = _isWhitelist;
   }
 
-  function setPoolTime(uint _startTime, uint _endTime) external onlyOwner {
+  function setPoolTime(uint256 _startTime, uint256 _endTime) external onlyOwner {
     require(block.timestamp < pool.endTime, "Sale is already finished");
     require(_startTime > block.timestamp, "Invalid start time.");
     require(_endTime > _startTime, "Invalid end time.");
@@ -469,5 +469,26 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     FEE = _fee;
   }
 
+  function setEmergencyWithdrawFee(uint8 _fee) external onlyLaunchpadOwner {
+    require(_fee > 0 && _fee <= 10, "Invalid fee");
+    EMERGENCY_WITHDRAW_FEE = _fee;
+  }
+
+  // fallback security emergency withdraw
+  function withdrawEth () external onlyLaunchpadOwner returns (bool) {
+    uint256 balance = address(this).balance;
+    (bool success, ) = payable(msg.sender).call{
+        value: balance
+    }("");
+    return success;
+  }
+
+  // this function is to withdraw BEP20 tokens sent to this address by mistake
+  function withdrawBEP20 (address _tokenAddress) external onlyLaunchpadOwner returns (bool) {
+    IERC20 token = IERC20(_tokenAddress);
+    uint256 balance = token.balanceOf(address(this));
+    bool success = token.transfer(msg.sender, balance);
+    return success;
+  }
 }
 

@@ -3,8 +3,8 @@ import { PresaleFactory } from "../typechain-types";
 import { SaleData } from "./data";
 
 
-export function toWei(value: number): bigint {
-  return ethers.parseEther(value.toString());
+export function toWei(value: number, decimals: number = 18): bigint {
+  return ethers.parseUnits(value.toString(), decimals);
 }
 
 export const tokensToDeposit = (data: SaleData) => {

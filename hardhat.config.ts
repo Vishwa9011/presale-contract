@@ -24,6 +24,7 @@ const config: HardhatUserConfig = {
       forking: {
         url: "https://bsc-testnet.publicnode.com",
       },
+      chainId: 97,
       accounts: [
         { privateKey: PRIVATE_KEY, balance: "100000000000000000000" },
         { privateKey: PRIVATE_KEY1, balance: "100000000000000000000" },

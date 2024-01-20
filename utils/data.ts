@@ -29,8 +29,8 @@ export type DeploymentOptions = Pick<Presale.PresaleInfoStruct, 'isWhitelist'>;
 export const initSaleData = [
   {
     saleRate: 1000,
-    minBuy: 0.01,
-    maxBuy: 0.1,
+    minBuy: 0.5,
+    maxBuy: 1,
     softCap: 0.5,
     hardCap: 2,
     listingRate: 800,
