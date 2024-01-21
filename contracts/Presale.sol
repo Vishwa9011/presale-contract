@@ -27,6 +27,12 @@ interface IPinkLock {
    function unlock(uint256 lockId) external;
 }
 
+interface IERC20Metadata {
+  function name() external view returns (string memory);
+  function symbol() external view returns (string memory);
+  function decimals() external view returns (uint8);
+}
+
 contract Presale is Ownable, Whitelist, ReentrancyGuard {
   using SafeERC20 for IERC20;
 
@@ -94,22 +100,23 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
   // constructor
   constructor(PresaleInfo memory presaleInfo, Pool memory newPool, Links memory _links, address _presaleList) {
-    require(presaleInfo.teamWallet != address(0), "Invalid team wallet address");
-    require(presaleInfo.launchpadOwner != address(0), "Invalid launchpad owner address");
-    require(presaleInfo.uniswapv2Router != address(0), "Invalid router address");
-    require(presaleInfo.tokenAddress != address(0), "Invalid token address");
-    require(presaleInfo.pinkLock != address(0), "Invalid pinkLock address");
-    require(_presaleList != address(0), "Invalid presale list address");
+    if (presaleInfo.teamWallet == address(0)) revert InvalidTeamWalletAddress();
+    if (presaleInfo.launchpadOwner == address(0)) revert InvalidLaunchpadOwnerAddress();
+    if (presaleInfo.uniswapv2Router == address(0)) revert InvalidRouterAddress();
+    if (presaleInfo.tokenAddress == address(0)) revert InvalidTokenAddress();
+    if (presaleInfo.pinkLock == address(0)) revert InvalidPinkLockAddress();
+    if (_presaleList == address(0)) revert InvalidPresaleListAddress();
 
-    // require statements for pool
-    require(newPool.endTime > newPool.startTime, "Invalid end time.");
-    require(newPool.minBuy > 0, "Min buy must be greater than 0.");
-    require(newPool.saleRate > 0, "Sale rate must be greater than 0.");
-    require(newPool.startTime >= block.timestamp, "Invalid start time.");
-    require(newPool.listingRate > 0, "Listing rate must be greater than 0.");
-    require(newPool.maxBuy > newPool.minBuy, "Max buy must be greater than min buy.");
-    require(newPool.softCap >= newPool.hardCap / 4, "Soft cap must be at least 25% of hard cap.");
-    require(newPool.liquidityPercent > 50 && newPool.liquidityPercent <= 100, "Liquidity percent must be between 51 and 100.");
+    // Error handling for pool
+    if (newPool.endTime <= newPool.startTime) revert InvalidEndTime();
+    if (newPool.minBuy <= 0) revert MinBuyTooLow();
+    if (newPool.saleRate <= 0) revert SaleRateTooLow();
+    if (newPool.startTime < block.timestamp) revert InvalidStartTime();
+    if (newPool.listingRate <= 0) revert ListingRateTooLow();
+    if (newPool.maxBuy <= newPool.minBuy) revert MaxBuyTooLow();
+    if (newPool.softCap < newPool.hardCap / 4) revert SoftCapTooLow();
+    if (newPool.liquidityPercent <= 50 || newPool.liquidityPercent > 100) revert InvalidLiquidityPercent();
+
 
     ethRaised = 0;
     isRefund = false;
@@ -177,6 +184,25 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   event RefundRemainder(address indexed _initiator, uint256 _amount);
   event Liquified(address indexed _token,address indexed _router, address indexed _pair);
 
+  // errors
+  error InvalidTeamWalletAddress();
+  error InvalidLaunchpadOwnerAddress();
+  error InvalidRouterAddress();
+  error InvalidTokenAddress();
+  error InvalidPinkLockAddress();
+  error InvalidPresaleListAddress();
+  error InvalidEndTime();
+  error MinBuyTooLow();
+  error SaleRateTooLow();
+  error InvalidStartTime();
+  error ListingRateTooLow();
+  error MaxBuyTooLow();
+  error SoftCapTooLow();
+  error InvalidLiquidityPercent();
+  error SoftCapNotReached();
+  error SaleNotStarted();
+  error RefundAlreadyDone();
+  error SaleAlreadyFinished();
   /*
     * @dev function to deposit tokens into the contract
   */
@@ -196,10 +222,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     * @dev function to finish the sale
   */
   function finishSale() external onlyOwner onlyInActive nonReentrant{
-    require(ethRaised >= pool.softCap, "Soft cap not reached");
-    require(block.timestamp > pool.startTime, "Can not finish before sale start");
-    require(isRefund == false,"Refund already done");
-    require(isFinished == false, "Sale is already finished");
+    if (ethRaised < pool.softCap) revert SoftCapNotReached();
+    if (block.timestamp <= pool.startTime) revert SaleNotStarted();
+    if (isRefund) revert RefundAlreadyDone();
+    if (isFinished) revert SaleAlreadyFinished();
 
     isFinished = true;
     // getting used amount of tokens
@@ -218,39 +244,13 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     require(amountToken == tokensForLiquidity && amountETH == liquidityETH, "Liquidity add failed");
     
     // lock liquidity
-    address lpToken = UniswapV2Factory.getPair(address(tokenInstance), weth);
-    uint256 liquidityAmount = IERC20(lpToken).balanceOf(address(this));
-    IERC20(lpToken).approve(address(pinkLock), liquidityAmount);
-    
-    uint256 unlockDate = block.timestamp + (pool.lockPeriod * 1 minutes);
-    pinkLockId = pinkLock.lock(address(this), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
+    lockLiquidity();
 
-    emit Liquified(address(this), address(UniswapV2Router02), lpToken);
-
-    // transfer fees(eth) to team 
-    uint256 fees = _getTeamFee();
-    sendEther(teamWallet, fees);
-
-    // transfer eth to owner
-    uint256 creatorShare = _getOwnerShare();
-    if(creatorShare > 0){
-      sendEther(owner(), creatorShare);
-    }
+    // transfer fees and share
+    transferFeesAndShare();
 
     // if hardcap is not reached then burn or refund the remain tokens
-    if(ethRaised < pool.hardCap){
-        uint256 remainTokens = getTokensToDeposit() - tokensForSale - tokensForLiquidity;
-      if(burnToken){
-        tokenInstance.safeTransfer(address(0), remainTokens);
-        emit BurnRemainder(msg.sender, remainTokens);
-      }else{
-        uint256 ownerBalanceBefore = tokenInstance.balanceOf(owner());
-        tokenInstance.safeTransfer(msg.sender, remainTokens);
-        uint256 ownerBalanceAfter = tokenInstance.balanceOf(owner());
-        require(ownerBalanceBefore + remainTokens == ownerBalanceAfter, "Token getting tax on transfer, please exclude this contract from tax");
-        emit RefundRemainder(msg.sender, remainTokens);
-      }
-    }
+    handleRemainingTokens(tokensForSale, tokensForLiquidity);
   }
 
   /*
@@ -259,6 +259,10 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   function releaseLpTokens() external onlyOwner onlyInActive{
     require(isFinished == true, "Sale is not finished");
     pinkLock.unlock(pinkLockId);
+    // transfer lp tokens to owner
+    address lpToken = UniswapV2Factory.getPair(address(tokenInstance), weth);
+    uint256 lpTokenBalance = IERC20(lpToken).balanceOf(address(this));
+    IERC20(lpToken).safeTransfer(owner(), lpTokenBalance);
   }
 
   /*
@@ -272,7 +276,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
-      tokenInstance.safeTransfer(owner(), tokenBalance);
+      safeTransferWithCheck(owner(), tokenBalance);
       emit Withdraw(owner(), tokenBalance);
     }
     emit Cancelled(msg.sender, address(tokenInstance),address(this));
@@ -303,10 +307,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     uint256 tokensAmount = _getUserTokens(msg.sender);
     require(tokensAmount > 0, "No tokens to claim");
     contributorBalance[msg.sender] = 0;
-    uint256 userBalanceBefore = tokenInstance.balanceOf(msg.sender);
-    tokenInstance.safeTransfer(msg.sender, tokensAmount);
-    uint256 userBalanceAfter = tokenInstance.balanceOf(msg.sender);
-    require(userBalanceBefore + tokensAmount == userBalanceAfter, "Token getting tax on transfer, please exclude this contract from tax");
+    safeTransferWithCheck(_msgSender(), tokensAmount);
     emit Claimed(msg.sender, tokensAmount);
   }
 
@@ -363,7 +364,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   // check sale requirements
-  function _checkSaleRequirements(address _contributor,uint256 _amount) internal view {
+  function _checkSaleRequirements(address _contributor,uint256 _amount) private {
     if(isWhitelist){
       require(whitelists[_contributor] == true, "User not whitelisted");
     }
@@ -384,6 +385,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   struct PresaleData {
     Pool pool;
     string logo;
+    string tokenName;
+    string tokenSymbol;
     uint256 ethRaised;
     uint256 presaleTokens;
     address tokenAddress;
@@ -395,9 +398,12 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   function getPresaleData() external view returns (PresaleData memory) {
+    IERC20Metadata token = IERC20Metadata(address(tokenInstance));
     return PresaleData({
       pool: pool,
       ethRaised: ethRaised,
+      tokenName: token.name(),
+      tokenSymbol: token.symbol(),
       tokenAddress: address(tokenInstance),
       presaleTokens: presaleTokens,
       owner: owner(),
@@ -407,6 +413,50 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
       isRefund: isRefund,
       logo: links.logo
     });
+  }
+
+  /*
+    * @dev private functions
+   */
+
+  function lockLiquidity() private {
+    address lpToken = UniswapV2Factory.getPair(address(tokenInstance), weth);
+    uint256 liquidityAmount = IERC20(lpToken).balanceOf(address(this));
+    IERC20(lpToken).approve(address(pinkLock), liquidityAmount);
+    
+    uint256 unlockDate = block.timestamp + (pool.lockPeriod * 1 minutes);
+    pinkLockId = pinkLock.lock(address(this), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
+
+    emit Liquified(address(this), address(UniswapV2Router02), lpToken);
+  }
+  
+  // trasfer fees and share
+  function transferFeesAndShare() private {
+    uint256 fees = _getTeamFee();
+    uint256 creatorShare = _getOwnerShare();
+
+    sendEther(owner(), creatorShare);
+    sendEther(teamWallet, fees);
+  }
+
+  function handleRemainingTokens(uint256 tokensForSale, uint256 tokensForLiquidity) private {
+    if (ethRaised < pool.hardCap) {
+      uint256 remainTokens = getTokensToDeposit() - tokensForSale - tokensForLiquidity;
+      if (burnToken) {
+        tokenInstance.safeTransfer(address(0), remainTokens);
+        emit BurnRemainder(msg.sender, remainTokens);
+      } else {
+        safeTransferWithCheck(owner(), remainTokens);
+      }
+    }
+  }
+
+  function safeTransferWithCheck(address recipient, uint256 amount) private {
+    uint256 balanceBefore = tokenInstance.balanceOf(recipient);
+    tokenInstance.safeTransfer(recipient, amount);
+    uint256 balanceAfter = tokenInstance.balanceOf(recipient);
+    if (balanceBefore + amount != balanceAfter) revert("Token getting tax on transfer, please exclude this contract from tax");
+    emit RefundRemainder(recipient, amount);
   }
 
   /*
