@@ -10,6 +10,8 @@ import "./Ownable.sol";
 import "./Whitelist.sol";
 import "./IPresaleList.sol";
 
+import "hardhat/console.sol";
+
 interface IUniswapV2Router02 {
     function factory() external pure returns (address);
     function addLiquidityETH(address token,uint256 amountTokenDesired,uint256 amountTokenMin,uint256 amountETHMin,address to,uint256 deadline) external payable returns (uint256 amountToken,uint256 amountETH,uint256 liquidity);
@@ -217,12 +219,11 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
     
     // lock liquidity
     address lpToken = UniswapV2Factory.getPair(address(tokenInstance), weth);
-    IERC20(lpToken).approve(address(pinkLock), tokensForLiquidity);
     uint256 liquidityAmount = IERC20(lpToken).balanceOf(address(this));
+    IERC20(lpToken).approve(address(pinkLock), liquidityAmount);
     
-    IPinkLock lock = IPinkLock(pinkLock);
     uint256 unlockDate = block.timestamp + (pool.lockPeriod * 1 minutes);
-    pinkLockId = lock.lock(owner(), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
+    pinkLockId = pinkLock.lock(address(this), lpToken, true, liquidityAmount, unlockDate, "Liquidity Lock");
 
     emit Liquified(address(this), address(UniswapV2Router02), lpToken);
 
@@ -271,9 +272,8 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
 
     uint256 tokenBalance = tokenInstance.balanceOf(address(this));
     if(tokenBalance > 0){
-      uint256 tokenDeposit = getTokensToDeposit();
-      tokenInstance.safeTransfer(owner(), tokenDeposit);
-      emit Withdraw(owner(), tokenDeposit);
+      tokenInstance.safeTransfer(owner(), tokenBalance);
+      emit Withdraw(owner(), tokenBalance);
     }
     emit Cancelled(msg.sender, address(tokenInstance),address(this));
   }
