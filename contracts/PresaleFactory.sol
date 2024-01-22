@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./Presale.sol";
 import "./Ownable.sol";
+import "./Deployment.sol";
 import "./IPresaleList.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -12,10 +13,12 @@ contract PresaleFactory is Ownable {
     using SafeERC20 for IERC20;
 
     address public presaleListContract;
+    address public deploymentContract;
     uint public poolFee;
 
     constructor(address _presaleList, uint _poolFee) {
         presaleListContract = _presaleList;
+        deploymentContract = address(new Deployment());
         poolFee = _poolFee;
     }
 
@@ -34,8 +37,11 @@ contract PresaleFactory is Ownable {
     ) external payable returns (address) {
         if(msg.value != poolFee) revert InvalidPoolFee();
 
-        Presale presale = new Presale(_presaleInfo, _pool, _links, presaleListContract);
-        transferTokenToPresale(presale,address(_presaleInfo.tokenAddress));
+        Deployment deployment = Deployment(deploymentContract);
+
+        Presale presale = deployment.deployContract(_presaleInfo, _pool, _links, presaleListContract);
+
+        transferTokenToPresale(presale, address(_presaleInfo.tokenAddress));
         IPresaleList(presaleListContract).addPresale(address(presale));
         presale.transferOwnership(msg.sender);
 
@@ -59,6 +65,10 @@ contract PresaleFactory is Ownable {
 
     function setPresaleListAddress(address _presaleList) external onlyOwner() {
         presaleListContract = _presaleList;
+    }
+
+    function setDeploymentAddress(address _deployment) external onlyOwner() {
+        deploymentContract = _deployment;
     }
 
     function setPoolFee(uint _poolFee) external onlyOwner() {

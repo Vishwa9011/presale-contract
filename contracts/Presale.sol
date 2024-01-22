@@ -364,7 +364,7 @@ contract Presale is Ownable, Whitelist, ReentrancyGuard {
   }
 
   // check sale requirements
-  function _checkSaleRequirements(address _contributor,uint256 _amount) private {
+  function _checkSaleRequirements(address _contributor,uint256 _amount) internal view {
     if(isWhitelist){
       require(whitelists[_contributor] == true, "User not whitelisted");
     }
